@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+		<PropertyGroup>
+				<RootNamespace>Flex.UiWpfFramework</RootNamespace>
+				<AssemblyName>Flex.UiWpfFramework</AssemblyName>
+				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+				<ProductVersion>8.0.30703</ProductVersion>
+				<AssemblyVersion>3.4.23</AssemblyVersion>
+				<PackageId>Flex.UiWpfFramework</PackageId>
+				<Version>3.4.23</Version>
+				<Authors>Flex Radio</Authors>
+				<Company>Flex Radio</Company>
+		</PropertyGroup>
+
+		<PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+				<TargetFramework>netstandard2.0</TargetFramework>
+		</PropertyGroup>
+
+		<PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
+				<TargetFrameworks>net462;net48;netstandard2.0</TargetFrameworks>
+				<UseWPF>true</UseWPF>
+				<UseWindowsForms>true</UseWindowsForms>
+		</PropertyGroup>
+
+		<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+				<DebugSymbols>true</DebugSymbols>
+				<DebugType>full</DebugType>
+				<Optimize>false</Optimize>
+				<DefineConstants>DEBUG;TRACE</DefineConstants>
+		</PropertyGroup>
+
+		<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+				<DebugType>pdbonly</DebugType>
+				<Optimize>true</Optimize>
+		</PropertyGroup>
+
+
+
+		<ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+				<Compile Remove="Utils\ClientPersistence.cs"/>
+				<Compile Remove="Utils\IPAddressValidator.cs"/>
+				<Compile Remove="Utils\WindowPlacement.cs"/>
+				<Compile Remove="Mvvm\IDialogService.cs"/>
+				<Compile Remove="Mvvm\DialogService.cs"/>
+				<Compile Remove="Mvvm\RelayCommand.cs"/>
+				<Compile Remove="Mvvm\SafeObservableCollection.cs"/>
+		</ItemGroup>
+
+		<ItemGroup>
+				<PackageReference Include="System.Configuration.ConfigurationManager" Version="7.0.0" />
+		</ItemGroup>
+</Project>
