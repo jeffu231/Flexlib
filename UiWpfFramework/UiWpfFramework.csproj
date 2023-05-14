@@ -10,6 +10,8 @@
 				<Version>3.4.23</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
+			 <PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>
+			 <RepositoryUrl>https://github.com/jeffu231/FlexLib</RepositoryUrl>
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
