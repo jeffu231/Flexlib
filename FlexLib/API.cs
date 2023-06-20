@@ -68,8 +68,8 @@ namespace Flex.Smoothlake.FlexLib
             set { is_gui = value; }
         }
 
-        private static bool _logDiscovery = true;
-        private static bool _logDisconnect = true;
+        private static bool _logDiscovery = false;
+        private static bool _logDisconnect = false;
 
         private static bool initialized = false;
         private static object init_obj = new Object();

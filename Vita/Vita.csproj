@@ -8,7 +8,7 @@
 				<AssemblyVersion>3.4.23</AssemblyVersion>
 				<AssemblyName>Flex.Vita</AssemblyName>
 				<PackageId>Flex.Vita</PackageId>
-				<Version>3.4.23</Version>
+				<Version>3.4.24</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
 			 <PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>

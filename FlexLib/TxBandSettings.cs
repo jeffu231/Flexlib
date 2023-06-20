@@ -10,11 +10,10 @@
 // *	\author Abed Haque, AB5ED
 // */
 // ****************************************************************************
-
+using Flex.UiWpfFramework.Mvvm;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Flex.UiWpfFramework.Mvvm;
 
 namespace Flex.Smoothlake.FlexLib
 {
