@@ -1,0 +1,42 @@
+name: dotnet package
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '7.0.x'
+          source-url: https://nuget.pkg.github.com/jeffu231/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      - name: Display dotnet version
+        run: dotnet --version
+      - name: Install Dependencies
+        run: dotnet restore
+      - name: Build
+        run: dotnet build -c Release --no-restore
+      - name: Create the Flexlib package
+        run: dotnet pack -c Release Flexlib
+      - name: Publish the Flexlib package to GPR
+        run: dotnet nuget push Flexlib/bin/Release/*.nupkg
+      - name: Create the Util package
+        run: dotnet pack -c Release Util
+      - name: Publish the Util package to GPR
+        run: dotnet nuget push Util/bin/Release/*.nupkg
+      - name: Create the Vita package
+        run: dotnet pack -c Release Vita
+      - name: Publish the Vita package to GPR
+        run: dotnet nuget push Vita/bin/Release/*.nupkg
+      - name: Create the UiWpfFramework package
+        run: dotnet pack -c Release UiWpfFramework
+      - name: Publish the UiWpfFramework package to GPR
+        run: dotnet nuget push UiWpfFramework/bin/Release/*.nupkg
