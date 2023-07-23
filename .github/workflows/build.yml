@@ -25,9 +25,9 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore
       - name: Create the Flexlib package
-        run: dotnet pack -c Release Flexlib
+        run: dotnet pack -c Release FlexLib
       - name: Publish the Flexlib package to GPR
-        run: dotnet nuget push Flexlib/bin/Release/*.nupkg
+        run: dotnet nuget push FlexLib/bin/Release/*.nupkg
       - name: Create the Util package
         run: dotnet pack -c Release Util
       - name: Publish the Util package to GPR
