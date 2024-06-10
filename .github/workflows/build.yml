@@ -1,7 +1,14 @@
 name: dotnet package
 
-on: [push]
-
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**/.gitignore'
+      - '**/README.md'
+      
 jobs:
   build:
     runs-on: ubuntu-latest
