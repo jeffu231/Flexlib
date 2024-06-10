@@ -651,14 +651,6 @@ namespace Flex.Smoothlake.FlexLib
         public string Preamp
         {
             get { return _preamp; }
-            set
-            {
-                if (_preamp != value)
-                {
-                    _preamp = value;
-                    RaisePropertyChanged("Preamp");
-                }
-            }
         }
 
         private bool _loopA;

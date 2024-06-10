@@ -535,13 +535,13 @@ namespace Flex.Smoothlake.FlexLib
                     case "NFM":
                     case "DFM":
                     case "DSTR":
+                    case "AME":
                         if (new_cut < -12000) new_cut = -12000;
                         if (new_cut > -10) new_cut = -10;
                         break;
                     case "USB":
                     case "DIGU":
                     case "FDV":
-                    case "AME":
                     default:
                         if (new_cut < 0) new_cut = 0;
                         break;
@@ -601,13 +601,13 @@ namespace Flex.Smoothlake.FlexLib
                     case "NFM":
                     case "DFM":
                     case "DSTR":
+                    case "AME":
                         if (new_cut > 12000) new_cut = 12000;
                         if (new_cut < 10) new_cut = 10;
                         break;
                     case "USB":
                     case "DIGU":
                     case "FDV":
-                    case "AME":
                     default:
                         if (new_cut > 12000) new_cut = 12000;
                         break;
@@ -673,6 +673,7 @@ namespace Flex.Smoothlake.FlexLib
                 case "NFM":
                 case "DFM":
                 case "DSTR":
+                case "AME":
                     if (low < -12000) low = -12000;
                     if (high > 12000) high = 12000;
                     if (high - low < 50) high = low + 50;
@@ -680,7 +681,6 @@ namespace Flex.Smoothlake.FlexLib
                 case "USB":
                 case "DIGU":
                 case "FDV":
-                case "AME":
                 default:
                     if (low < 0) low = 0;
                     if (high > 12000) high = 12000;

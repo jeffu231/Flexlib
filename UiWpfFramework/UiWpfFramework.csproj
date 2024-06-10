@@ -5,11 +5,12 @@
 				<AssemblyName>Flex.UiWpfFramework</AssemblyName>
 				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 				<ProductVersion>8.0.30703</ProductVersion>
-				<AssemblyVersion>3.4.23</AssemblyVersion>
+				<AssemblyVersion>3.6.8</AssemblyVersion>
 				<PackageId>Flex.UiWpfFramework</PackageId>
-				<Version>3.4.24</Version>
+				<Version>3.6.8</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
+				<LangVersion>latest</LangVersion>
 			 <PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>
 			 <RepositoryUrl>https://github.com/jeffu231/FlexLib</RepositoryUrl>
 		</PropertyGroup>
@@ -49,6 +50,6 @@
 		</ItemGroup>
 
 		<ItemGroup>
-				<PackageReference Include="System.Configuration.ConfigurationManager" Version="7.0.0" />
+				<PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
 		</ItemGroup>
 </Project>

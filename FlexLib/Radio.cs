@@ -337,6 +337,12 @@ namespace Flex.Smoothlake.FlexLib
         {
             get { return _ale4G; }
         }
+        
+        private ALEComposite _aleComposite;
+        public ALEComposite ALEComposite
+        {
+            get { return _aleComposite; }
+        }
 
         private string[] _logLevels;
         public string[] LogLevels
@@ -572,6 +578,13 @@ namespace Flex.Smoothlake.FlexLib
                 }
             }
         }
+        
+        private static readonly string[] BigBendModels =
+            {"FLEX-6650", "FLEX-6650M", "FLEX-6450", "FLEX-6450M", "ML-9600W"};
+        private static readonly string[] DeepEddyModels = {"FLEX-6600", "FLEX-6400", "FLEX-6600M", "FLEX-6400M"};
+        private static readonly string[] MicroburstModels = {"FLEX-6300", "FLEX-6500", "FLEX-6700"};
+
+        public bool IsBigBend => BigBendModels.Contains(Model);
 
         private string _serial;
         /// <summary>
@@ -1620,6 +1633,7 @@ namespace Flex.Smoothlake.FlexLib
             _ale2G = new ALE2G(this);
             _ale3G = new ALE3G(this);
             _ale4G = new ALE4G(this);
+            _aleComposite = new ALEComposite(this);
 
             IsWan = isWan;
 
@@ -1853,6 +1867,8 @@ namespace Flex.Smoothlake.FlexLib
             SendCommand("sub rapidm all");
             SendCommand("sub ale all");
             SendCommand("sub log_manager");
+            SendCommand("sub radio all");
+            SendCommand("sub codec all");
 
             // ensure that packets are manually fragmented to avoid network issues
             SendRadioMTUCommand(_mtu);
@@ -2541,10 +2557,12 @@ namespace Flex.Smoothlake.FlexLib
                 case "ale":
                     if(words[1] == "2g")
                         _ale2G.ParseStatus(tokens[1].Substring("ale 2g ".Length));
-                    if (words[1] == "3g")
+                    else if (words[1] == "3g")
                         _ale3G.ParseStatus(tokens[1].Substring("ale 3g ".Length));
-                    if (words[1] == "4g")
+                    else if (words[1] == "4g")
                         _ale4G.ParseStatus(tokens[1].Substring("ale 4g ".Length));
+                    else
+                        _aleComposite.ParseStatus(tokens[1].Substring("ale ".Length));
                     break;
                 case "amplifier":
                     ParseAmplifierStatus(tokens[1].Substring("amplifier ".Length)); // remove the "amplifier "
@@ -3614,6 +3632,23 @@ namespace Flex.Smoothlake.FlexLib
                                 RaisePropertyChanged("LowLatencyDigitalModes");
                             }
                             break;
+                        case "mf_enable":
+                            {
+                                // "radio mf_enable=1|0"
+
+                                byte temp;
+                                bool b = byte.TryParse(value, out temp);
+
+                                if (!b)
+                                {
+                                    Debug.WriteLine("Radio::ParseRadioStatus - mf_enable: Invalid value (" + kv + ")");
+                                    continue;
+                                }
+
+                                _multiFlexEnabled = Convert.ToBoolean(temp);
+                                RaisePropertyChanged("MultiFlexEnabled");
+                            }
+                            break;
                     }
                 }
             }
@@ -4032,6 +4067,7 @@ namespace Flex.Smoothlake.FlexLib
                         case "CW":
                         case "AM":
                         case "SAM":
+                        case "AME":
                             {
                                 freq = target_slice.Freq + (((target_slice.FilterHigh / 2.0) * 1e-6));
                             } 
@@ -4040,7 +4076,6 @@ namespace Flex.Smoothlake.FlexLib
                         case "USB":
                         case "DIGU":
                         case "FDV":
-                        case "AME":
                         default:
                             {
                                 freq = target_slice.Freq + (((target_slice.FilterHigh - target_slice.FilterLow) / 2.0) * 1e-6);
@@ -9951,8 +9986,8 @@ namespace Flex.Smoothlake.FlexLib
                 {
                     _startOffsetEnabled = value;
 
-                    //when 0 start pll (disabled)
-                    //when 1 pll is over (enabled, default state)
+                    //when false start pll (disabled)
+                    //when true pll is over (enabled, default state)
                     if (!_startOffsetEnabled)
                     {
                         SendCommand("radio pll_start");
@@ -13418,6 +13453,21 @@ namespace Flex.Smoothlake.FlexLib
 
         #endregion
 
+        private bool _multiFlexEnabled = true;
+        public bool MultiFlexEnabled
+        {
+            get { return _multiFlexEnabled; }
+            set
+            {
+                if (_multiFlexEnabled != value)
+                {
+                    _multiFlexEnabled = value;
+                    SendCommand("radio set mf_enable=" + Convert.ToByte(_multiFlexEnabled));
+                    RaisePropertyChanged("MultiFlexEnabled");
+                }
+            }
+        }
+
         /// <summary>
         /// Get a reference to the CWX object
         /// </summary>
@@ -13524,6 +13574,90 @@ namespace Flex.Smoothlake.FlexLib
                 {
                     _maxLicensedVersion = value;
                     RaisePropertyChanged("MaxLicensedVersion");
+                }
+            }
+        }
+
+        private int _licensedClients = 0;
+        public int LicensedClients
+        {
+            get { return _licensedClients; }
+            set
+            {
+                if (_licensedClients != value)
+                {
+                    _licensedClients = value;
+                    RaisePropertyChanged("LicensedClients");
+                }
+            }
+        }
+
+        private int _availableClients = 0;
+        public int AvailableClients
+        {
+            get { return _availableClients; }
+            set
+            {
+                if (_availableClients != value)
+                {
+                    _availableClients = value;
+                    RaisePropertyChanged("AvailableClients");
+                }
+            }
+        }
+
+        private int _maxPanadapters = 0;
+        public int MaxPanadapters
+        {
+            get { return _maxPanadapters; }
+            set
+            {
+                if (_maxPanadapters != value)
+                {
+                    _maxPanadapters = value;
+                    RaisePropertyChanged("MaxPanadapters");
+                }
+            }
+        }
+
+        private int _availablePanadapters = 0;
+        public int AvailablePanadapters
+        {
+            get { return _availablePanadapters; }
+            set
+            {
+                if (_availablePanadapters != value)
+                {
+                    _availablePanadapters = value;
+                    RaisePropertyChanged("AvailablePanadapters");                    
+                }
+            }
+        }
+
+        private int _availableSlices = 0;
+        public int AvailableSlices
+        {
+            get { return _availableSlices; }
+            set
+            {
+                if (_availableSlices != value)
+                {
+                    _availableSlices = value;
+                    RaisePropertyChanged("AvailableSlices");
+                }
+            }
+        }
+
+        private int _maxSlices = 0;
+        public int MaxSlices
+        {
+            get { return _maxSlices; }
+            set
+            {
+                if (_maxSlices != value)
+                {
+                    _maxSlices = value;
+                    RaisePropertyChanged("MaxSlices");
                 }
             }
         }

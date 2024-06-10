@@ -15,8 +15,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
-
 using Flex.UiWpfFramework.Mvvm;
 
 
@@ -25,6 +23,8 @@ namespace Flex.Smoothlake.FlexLib
     public class ALE2G : ObservableObject
     {
         private Radio _radio;
+        private const int SOUND_START_MAX = 86399;
+        private const int SOUND_INTERVAL_MAX = 3600;
 
         public ALE2G(Radio radio)
         {
@@ -225,6 +225,62 @@ namespace Flex.Smoothlake.FlexLib
 
             if(station_to_be_removed != null)
                 OnALE2GStationRemoved(station_to_be_removed);
+        }
+
+        private List<ALE2GPath> _pathList = new List<ALE2GPath>();
+        public List<ALE2GPath> PathList
+        {
+            get
+            {
+                if (_pathList == null) return null;
+                lock (_pathList)
+                    return _pathList;
+            }
+        }
+
+        public delegate void ALE2GPathAddedEventHandler(ALE2GPath path);
+        public event ALE2GPathAddedEventHandler ALE2GPathAdded;
+
+        private void OnALE2GPathAdded(ALE2GPath path)
+        {
+            if (ALE2GPathAdded != null)
+                ALE2GPathAdded(path);
+        }
+
+        public delegate void ALE2GPathRemovedEventHandler(ALE2GPath path);
+        public event ALE2GPathRemovedEventHandler ALE2GPathRemoved;
+
+        private void OnALE2GPathRemoved(ALE2GPath path)
+        {
+            if (ALE2GPathRemoved != null)
+                ALE2GPathRemoved(path);
+        }
+
+        private void RemovePath(string id)
+        {
+            ALE2GPath path_to_be_removed = null;
+            lock (_pathList)
+            {
+                foreach (ALE2GPath path in _pathList)
+                {
+                    if (path.PathID == id)
+                    {
+                        path_to_be_removed = path;
+                        break;
+                    }
+                }
+
+                if (path_to_be_removed != null)
+                    _pathList.Remove(path_to_be_removed);
+            }
+
+            if (path_to_be_removed != null)
+                OnALE2GPathRemoved(path_to_be_removed);
+        }
+
+        public void Remove2GPath(string id)
+        {
+            RemovePath(id);
         }
 
         internal void ParseStatus(string s)
@@ -549,6 +605,184 @@ namespace Flex.Smoothlake.FlexLib
                         RaisePropertyChanged("Message");
                     }
                     break;
+                case "auto":
+                    {
+                        if (words.Length < 2)
+                        {
+                            Debug.WriteLine("ALE::ParseStatus - auto: Too few words -- min 2 (" + words + ")");
+                            return;
+                        }
+
+                        ALE2GStation station = new ALE2GStation();
+
+                        string[] auto_words = words.Skip(1).Take(words.Length - 1).ToArray(); // skip the "auto"
+                        foreach (string kv in auto_words)
+                        {
+                            string[] tokens = kv.Split('=');
+                            if (tokens.Length != 2)
+                            {
+                                Debug.WriteLine("ALE::ParseStatus - auto: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            string key = tokens[0];
+                            string value = tokens[1];
+
+                            switch (key.ToLower())
+                            {
+                                case "addr":
+                                    {
+                                        station.Name = value;
+                                        station.Self = false;
+                                        station.Address = value;
+                                    }
+                                    break;
+                            }
+                        }
+
+                        // is this a remove status?
+                        if (words.Length == 3 && //"auto addr=<name> removed"
+                            words[2] == "removed" &&
+                                words[1].StartsWith("addr="))
+                        {
+                            // yes -- remove the station
+                            RemoveStation(station.Name);
+                            RaisePropertyChanged("StationList");
+                        }
+                        else
+                        {
+                            // no -- add the station
+                            lock (_stationList)
+                            {
+                                //if station  already exists, delete the old one to replace with new station object
+                                ALE2GStation oldStation = _stationList.Find(stn => stn.Name == station.Name);
+                                if (oldStation != null)
+                                {
+                                    RemoveStation(oldStation.Name);
+                                }
+                                //add the new station
+                                _stationList.Add(station);
+                            }
+                            RaisePropertyChanged("StationList");
+
+                            OnALE2GStationAdded(station);
+                        }
+                    }
+                    break;
+                case "path":
+                    {
+                        if (words.Length < 2)
+                        {
+                            Debug.WriteLine("ALE2G::ParseStatus - path: Too few words -- min 2 (" + words + ")");
+                            return;
+                        }
+
+                        ALE2GPath path = new ALE2GPath();
+
+                        string[] path_words = words.Skip(1).Take(words.Length - 1).ToArray(); // skip the "path"
+                        foreach (string kv in path_words)
+                        {
+                            string[] tokens = kv.Split('=');
+                            if (tokens.Length != 2)
+                            {
+                                Debug.WriteLine("ALE2G::ParseStatus - path: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            string key = tokens[0];
+                            string value = tokens[1];
+
+                            switch (key.ToLower())
+                            {
+                                case "id": path.PathID = value; break;
+                                case "tx_block":
+                                    {
+                                        uint temp;
+                                        bool b = uint.TryParse(value, out temp);
+                                        if (!b)
+                                        {
+                                            Debug.WriteLine("ALE2G::ParseStatus - path - tx_block: Invalid key/value pair (" + kv + ")");
+                                            continue;
+                                        }
+                                        path.TxBlock = Convert.ToBoolean(temp);
+                                    }
+                                    break;
+                                case "sound":
+                                    {
+                                        uint temp;
+                                        bool b = uint.TryParse(value, out temp);
+                                        if (!b)
+                                        {
+                                            Debug.WriteLine("ALE2G::ParseStatus - path - sound: Invalid key/value pair (" + kv + ")");
+                                            continue;
+                                        }
+                                        path.Sound = Convert.ToBoolean(temp);
+                                    }
+                                    break;
+                                case "sound_start":
+                                    {
+                                        //convert string value to int temp
+                                        if (!Int32.TryParse(value, out int temp))
+                                        {
+                                            Debug.WriteLine("ALE2G::ParseStatus - path - sound_start: Invalid integer (" + value + ")");
+                                            continue;
+                                        }
+
+                                        //if temp is in legal range, continue
+                                        if (temp > 0 && temp < SOUND_START_MAX)
+                                        {
+                                            path.SoundStart = temp;
+                                        }
+                                    }
+                                    break;
+                                case "sound_int":
+                                    {
+                                        //convert string value to int temp
+                                        if (!Int32.TryParse(value, out int temp))
+                                        {
+                                            Debug.WriteLine("ALE2G::ParseStatus - path - sound_int: Invalid integer (" + value + ")");
+                                            continue;
+                                        }
+
+                                        //if temp is in legal range, continue
+                                        if (temp > 0 && temp < SOUND_INTERVAL_MAX)
+                                        {
+                                            path.SoundInt = temp;
+                                        }
+                                    }
+                                    break;
+                            }
+                        }
+
+                        // is this a remove status?
+                        if (words.Length == 3 && //"path id=<path id> removed"
+                            words[2] == "removed" &&
+                                words[1].StartsWith("id="))
+                        {
+                            // yes -- remove the path
+                            RemovePath(path.PathID);
+                            RaisePropertyChanged("PathList");
+                        }
+                        else
+                        {
+                            // no -- add the path
+                            lock (_pathList)
+                            {
+                                //if path already exists, delete the old one to replace with new path object
+                                ALE2GPath oldPath = _pathList.Find(p => p.PathID == path.PathID);
+                                if (oldPath != null)
+                                {
+                                    RemovePath(oldPath.PathID);
+                                }
+                                //add the new path
+                                _pathList.Add(path);
+                            }
+                            RaisePropertyChanged("PathList");
+
+                            OnALE2GPathAdded(path);
+                        }
+                    }
+                    break;
             }
         }
     }
@@ -597,5 +831,13 @@ namespace Flex.Smoothlake.FlexLib
     {
         public string Message { get; set; }
         public string Sender { get; set; }
+    }
+    public class ALE2GPath
+    {
+        public string PathID { get; set; }
+        public bool TxBlock { get; set; }
+        public bool Sound { get; set; }
+        public int SoundStart { get; set; }
+        public int SoundInt { get; set; }
     }
 }

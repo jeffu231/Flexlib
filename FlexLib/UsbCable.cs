@@ -351,7 +351,9 @@ namespace Flex.Smoothlake.FlexLib
         VHF_BCD,
         HF_VHF_BCD
     }
-
+#if !(NET6_0_OR_GREATER || NETSTANDARD2_0_OR_GREATER)
+    [TypeConverter(typeof(EnumDescriptionTypeConverter))]
+#endif
     public enum LdpaBand
     {
         [Description("2m")]

@@ -13,18 +13,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Flex.Util;
 using Flex.Smoothlake.Vita;
-
+using Flex.Util;
 
 namespace Flex.Smoothlake.FlexLib
 {
@@ -109,7 +104,7 @@ namespace Flex.Smoothlake.FlexLib
                 string[] tokens = kv.Split('=');
                 if (tokens.Length != 2)
                 {
-                    Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                    //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
                     continue;
                 }
 
@@ -119,6 +114,45 @@ namespace Flex.Smoothlake.FlexLib
 
                 switch (key.ToLower())
                 {
+                    case "available_clients":
+                        {
+                            int temp;
+                            bool b = int.TryParse(value, out temp);
+                            if (!b)
+                            {
+                                //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            radio.AvailableClients = temp;
+                        }
+                        break;
+                    case "available_panadapters":
+                        {
+                            int temp;
+                            bool b = int.TryParse(value, out temp);
+                            if (!b)
+                            {
+                                //.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            radio.AvailablePanadapters = temp;
+                        }
+                        break;
+                    case "available_slices":
+                        {
+                            int temp;
+                            bool b = int.TryParse(value, out temp);
+                            if (!b)
+                            {
+                                //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            radio.AvailableSlices = temp;
+                        }
+                        break;
                     case "callsign":
                         radio.Callsign = value;
                         break;
@@ -165,11 +199,53 @@ namespace Flex.Smoothlake.FlexLib
                             bool b = IPAddress.TryParse(value, out temp);
                             if (!b)
                             {
-                                Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
                                 continue;
                             }
 
                             radio.IP = temp;
+                        }
+                        break;
+                    case "licensed_clients":
+                        {
+                            int temp;
+                            bool b = int.TryParse(value, out temp);
+                            if (!b)
+                            {
+                                //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            radio.LicensedClients = temp;
+                        }
+                        break;
+                    case "max_licensed_version":
+                        radio.MaxLicensedVersion = StringHelper.Sanitize(value);
+                        break;
+                    case "max_panadapters":
+                        {
+                            int temp;
+                            bool b = int.TryParse(value, out temp);
+                            if (!b)
+                            {
+                                //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            radio.MaxPanadapters = temp;
+                        }
+                        break;
+                    case "max_slices":
+                        {
+                            int temp;
+                            bool b = int.TryParse(value, out temp);
+                            if (!b)
+                            {
+                                //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            radio.MaxSlices = temp;
                         }
                         break;
                     case "model":
@@ -184,13 +260,29 @@ namespace Flex.Smoothlake.FlexLib
                             bool b = ushort.TryParse(value, out temp);
                             if (!b)
                             {
-                                Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
+                                //Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair (" + kv + ")");
                                 continue;
                             }
 
                             radio.CommandPort = temp;
                         }
-                        break;                    
+                        break;
+                    case "radio_license_id":
+                        radio.RadioLicenseId = StringHelper.Sanitize(value);
+                        break;
+                    case "requires_additional_license":
+                        {
+                            uint temp;
+                            bool b = uint.TryParse(value, out temp);
+                            if (!b || temp > 1)
+                            {
+                                Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid value (" + kv + ")");
+                                continue;
+                            }
+
+                            radio.RequiresAdditionalLicense = Convert.ToBoolean(temp);
+                        }
+                        break;
                     case "serial":
                         radio.Serial = StringHelper.Sanitize(value);
                         break;
@@ -209,26 +301,7 @@ namespace Flex.Smoothlake.FlexLib
 
                             radio.Version = temp;
                         }
-                        break;
-                    case "max_licensed_version":
-                        radio.MaxLicensedVersion = StringHelper.Sanitize(value);
-                        break;
-                    case "radio_license_id":
-                        radio.RadioLicenseId = StringHelper.Sanitize(value);
-                        break;
-                    case "requires_additional_license":
-                        {
-                            uint temp;
-                            bool b = uint.TryParse(value, out temp);
-                            if (!b || temp > 1)
-                            {
-                                Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid value (" + kv + ")");
-                                continue;
-                            }
-
-                            radio.RequiresAdditionalLicense = Convert.ToBoolean(temp);
-                        }
-                        break;
+                        break;                    
                     case "wan_connected":
                         {
                             uint temp;

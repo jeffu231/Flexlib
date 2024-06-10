@@ -226,6 +226,62 @@ namespace Flex.Smoothlake.FlexLib
                 OnALE4GStationRemoved(station_to_be_removed);
         }
 
+        private List<ALE4GPath> _pathList = new List<ALE4GPath>();
+        public List<ALE4GPath> PathList
+        {
+            get
+            {
+                if (_pathList == null) return null;
+                lock (_pathList)
+                    return _pathList;
+            }
+        }
+
+        public delegate void ALE4GPathAddedEventHandler(ALE4GPath path);
+        public event ALE4GPathAddedEventHandler ALE4GPathAdded;
+
+        private void OnALE4GPathAdded(ALE4GPath path)
+        {
+            if (ALE4GPathAdded != null)
+                ALE4GPathAdded(path);
+        }
+
+        public delegate void ALE4GPathRemovedEventHandler(ALE4GPath path);
+        public event ALE4GPathRemovedEventHandler ALE4GPathRemoved;
+
+        private void OnALE4GPathRemoved(ALE4GPath path)
+        {
+            if (ALE4GPathRemoved != null)
+                ALE4GPathRemoved(path);
+        }
+
+        private void RemovePath(string id)
+        {
+            ALE4GPath path_to_be_removed = null;
+            lock (_pathList)
+            {
+                foreach (ALE4GPath path in _pathList)
+                {
+                    if (path.PathID == id)
+                    {
+                        path_to_be_removed = path;
+                        break;
+                    }
+                }
+
+                if (path_to_be_removed != null)
+                    _pathList.Remove(path_to_be_removed);
+            }
+
+            if (path_to_be_removed != null)
+                OnALE4GPathRemoved(path_to_be_removed);
+        }
+
+        public void Remove4GPath(string id)
+        {
+            RemovePath(id);
+        }
+
         internal void ParseStatus(string s)
         {
             string[] words = s.Split(' ');
@@ -534,6 +590,65 @@ namespace Flex.Smoothlake.FlexLib
                         }
                     }
                     break;
+                case "path":
+                    {
+                        if (words.Length < 2)
+                        {
+                            Debug.WriteLine("ALE4G::ParseStatus - path: Too few words -- min 2 (" + words + ")");
+                            return;
+                        }
+
+                        ALE4GPath path = new ALE4GPath();
+
+                        string[] path_words = words.Skip(1).Take(words.Length - 1).ToArray(); // skip the "path"
+                        foreach (string kv in path_words)
+                        {
+                            string[] tokens = kv.Split('=');
+                            if (tokens.Length != 2)
+                            {
+                                Debug.WriteLine("ALE4G::ParseStatus - path: Invalid key/value pair (" + kv + ")");
+                                continue;
+                            }
+
+                            string key = tokens[0];
+                            string value = tokens[1];
+
+                            switch (key.ToLower())
+                            {
+                                case "id": path.PathID = value; break;
+                                case "bw": path.Bandwidth = value; break;
+                            }
+                        }
+
+                        // is this a remove status?
+                        if (words.Length == 3 && //"path id=<path id> removed"
+                            words[2] == "removed" &&
+                                words[1].StartsWith("id="))
+                        {
+                            // yes -- remove the path
+                            RemovePath(path.PathID);
+                            RaisePropertyChanged("PathList");
+                        }
+                        else
+                        {
+                            // no -- add the path
+                            lock (_pathList)
+                            {
+                                //if path already exists, delete the old one to replace with new path object
+                                ALE4GPath oldPath = _pathList.Find(p => p.PathID == path.PathID);
+                                if (oldPath != null)
+                                {
+                                    RemovePath(oldPath.PathID);
+                                }
+                                //add the new path
+                                _pathList.Add(path);
+                            }
+                            RaisePropertyChanged("PathList");
+
+                            OnALE4GPathAdded(path);
+                        }
+                    }
+                    break;
             }
         }
     }
@@ -589,5 +704,11 @@ namespace Flex.Smoothlake.FlexLib
         public string Purpose { get; set; }
         public string ID { get; set; } //used only for queued and dequeued messages
         public string Reason { get; set; } //used only for dequeued messages
+    }
+
+    public class ALE4GPath
+    {
+        public string PathID { get; set; }
+        public string Bandwidth { get; set; }
     }
 }

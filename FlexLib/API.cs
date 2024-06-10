@@ -288,6 +288,24 @@ namespace Flex.Smoothlake.FlexLib
                         if (!r.IP.Equals(discovered_radio.IP))
                             r.IP = discovered_radio.IP;
 
+                        if (r.LicensedClients != discovered_radio.LicensedClients)
+                            r.LicensedClients = discovered_radio.LicensedClients;
+
+                        if (r.AvailableClients != discovered_radio.AvailableClients)
+                            r.AvailableClients = discovered_radio.AvailableClients;
+
+                        if (r.MaxPanadapters != discovered_radio.MaxPanadapters)
+                            r.MaxPanadapters = discovered_radio.MaxPanadapters;
+
+                        if (r.AvailablePanadapters != discovered_radio.AvailablePanadapters)
+                            r.AvailablePanadapters = discovered_radio.AvailablePanadapters;
+
+                        if (r.MaxSlices != discovered_radio.MaxSlices)
+                            r.MaxSlices = discovered_radio.MaxSlices;
+
+                        if (r.AvailableSlices != discovered_radio.AvailableSlices)
+                            r.AvailableSlices = discovered_radio.AvailableSlices;
+
                         r.UpdateGuiClientsList(newGuiClients: discovered_radio.GuiClients);
 
                         //Debug.WriteLine("Skipping Radio -- already in list: "+radio.ToString());

@@ -4,14 +4,15 @@
 				<RootNamespace>Flex.Smoothlake.FlexLib</RootNamespace>
 				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 				<ProductVersion>8.0.30703</ProductVersion>
-				<AssemblyVersion>3.4.24</AssemblyVersion>
+				<AssemblyVersion>3.6.8</AssemblyVersion>
 				<AssemblyName>FlexLib</AssemblyName>
 				<PackageId>FlexLib</PackageId>
-				<Version>3.4.23</Version>
+				<Version>3.6.8</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
 				<PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>
 				<RepositoryUrl>https://github.com/jeffu231/FlexLib</RepositoryUrl>
+				<LangVersion>latest</LangVersion>
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
