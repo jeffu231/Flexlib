@@ -6119,7 +6119,7 @@ namespace Flex.Smoothlake.FlexLib
 
             return null;
         }
-
+        
         public List<Meter> FindMetersByAmplifier(Amplifier amp)
         {
             List<Meter> amp_meters = new List<Meter>();
@@ -6137,6 +6137,18 @@ namespace Flex.Smoothlake.FlexLib
             }
 
             return amp_meters;
+        }
+        
+        /// <summary>
+        /// Gets the names of all the discovered meters. This is an add-on to existing FlexLib functionality.
+        /// </summary>
+        /// <returns>A list of the known meters</returns>
+        public List<Meter> GetMeters()
+        {
+            lock (_meters)
+            {
+                return _meters.ToList();
+            }
         }
 
         private void AddMeter(Meter m)
@@ -6167,6 +6179,8 @@ namespace Flex.Smoothlake.FlexLib
                 m.DataReady += new Meter.DataReadyEventHandler(HWAlc_DataReady);
             else if (m.Name == "+13.8A") // A: before the fuse
                 m.DataReady += new Meter.DataReadyEventHandler(Volts_DataReady);
+            else if (m.Name == "MAINFAN") 
+                m.DataReady += new Meter.DataReadyEventHandler(MainFan_DataReady);
         }
 
         private void RemoveMeter(Meter m)
@@ -6195,6 +6209,8 @@ namespace Flex.Smoothlake.FlexLib
                         m.DataReady -= HWAlc_DataReady;
                     else if (m.Name == "+13.8A") // A: Before the fuse
                         m.DataReady -= Volts_DataReady;
+                    else if (m.Name == "MAINFAN") 
+                        m.DataReady -= MainFan_DataReady;
                 }
             }
         }
@@ -6242,6 +6258,11 @@ namespace Flex.Smoothlake.FlexLib
         void Volts_DataReady(Meter meter, float data)
         {
             OnVoltsDataReady(data);
+        }
+
+        void MainFan_DataReady(Meter meter, float data)
+        {
+            OnMainFanDataReady(data);
         }
 
         /// <summary>
@@ -6347,6 +6368,17 @@ namespace Flex.Smoothlake.FlexLib
         {
             if (HWAlcDataReady != null)
                 HWAlcDataReady(data);
+        }
+        
+        /// <summary>
+        /// This event is raised when there is new meter data for the Main Fan
+        /// of the radio.  The data is in units of RPM.
+        /// </summary>
+        public event MeterDataReadyEventHandler MainFanDataReady;
+        private void OnMainFanDataReady(float data)
+        {
+            if (MainFanDataReady != null)
+                MainFanDataReady(data);
         }
 
         #endregion
