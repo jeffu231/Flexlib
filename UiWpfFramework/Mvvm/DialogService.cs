@@ -41,5 +41,10 @@ namespace Flex.UiWpfFramework.Mvvm
         {
             return MessageBox.Show(messageBoxText);
         }
+
+        public void FireAndForgetOkBox(string message)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -21,5 +21,6 @@ namespace Flex.UiWpfFramework.Mvvm
         MessageBoxResult ShowWarningYesNoBox(string messageBoxText, string title);
         MessageBoxResult ShowUHEBox(Exception exception, string uheTextSimple, string uheTextFull);
         MessageBoxResult ShowOkBox(string messageBoxText);
+        void FireAndForgetOkBox(string message);
     }
 }

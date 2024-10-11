@@ -14,6 +14,7 @@
 using System;
 using System.Reflection;
 using System.ComponentModel;
+using System.Globalization;
 
 namespace Flex.UiWpfFramework.Utils
 {
@@ -41,7 +42,6 @@ namespace Flex.UiWpfFramework.Utils
         }
     }
 
-
     public class BooleanToVisibilityMultiConverter : IMultiValueConverter
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
@@ -52,6 +52,22 @@ namespace Flex.UiWpfFramework.Utils
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
+        }
+    }
+
+    public class BooleanOrToGridLengthMultiConverter : IMultiValueConverter
+    {
+        public float TrueValue { get; set; }
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values
+                .OfType<bool>()
+                .Any(b => b) ? new GridLength(TrueValue) : new GridLength(0);
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            return null;
         }
     }
 
@@ -127,7 +143,7 @@ namespace Flex.UiWpfFramework.Utils
 
     public class BooleanToVisHiddenConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is Boolean && (bool)value)
             {
@@ -136,7 +152,7 @@ namespace Flex.UiWpfFramework.Utils
             return Visibility.Hidden;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is Visibility && (Visibility)value == Visibility.Visible)
             {
@@ -148,7 +164,7 @@ namespace Flex.UiWpfFramework.Utils
 
     public class BooleanToVisCollapsedConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is Boolean && (bool)value)
             {
@@ -157,7 +173,7 @@ namespace Flex.UiWpfFramework.Utils
             return Visibility.Collapsed;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value is Visibility && (Visibility)value == Visibility.Visible)
             {
@@ -170,14 +186,14 @@ namespace Flex.UiWpfFramework.Utils
 
     public class EnumToStringConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value == null) return DependencyProperty.UnsetValue;
 
             return GetDescription((Enum)value);
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return Enum.ToObject(targetType, value);
         }
@@ -202,13 +218,13 @@ namespace Flex.UiWpfFramework.Utils
     public class InverseBooleanConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter,
-            System.Globalization.CultureInfo culture)
+            CultureInfo culture)
         {
             return !(bool)value;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter,
-            System.Globalization.CultureInfo culture)
+            CultureInfo culture)
         {
             return !(bool)value;
         }
@@ -218,12 +234,12 @@ namespace Flex.UiWpfFramework.Utils
     {
         public double MaxMeterWidthPixels { get; set; }
 
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return (double)value / 100.0 * MaxMeterWidthPixels;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }
@@ -231,12 +247,12 @@ namespace Flex.UiWpfFramework.Utils
 
     public class MHzToHzConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return (int)(Math.Round((double)value * 1e6));
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }
@@ -244,7 +260,7 @@ namespace Flex.UiWpfFramework.Utils
 
     public class ZeroWidthSpaceStringConverter : IValueConverter
     {
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             // This inserts a zero-width space character between every character of the input string.
             // This can be useful for TextBoxes that have very long string where you would like
@@ -254,7 +270,7 @@ namespace Flex.UiWpfFramework.Utils
             return String.Join<char>(('\u200B').ToString(), (string)value);
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }
@@ -265,7 +281,7 @@ namespace Flex.UiWpfFramework.Utils
         public T FalseValue { get; set; }
         public T TrueValue { get; set; }
 
-        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             if (value == null)
                 return FalseValue;
@@ -273,7 +289,7 @@ namespace Flex.UiWpfFramework.Utils
                 return (bool)value ? TrueValue : FalseValue;
         }
 
-        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return value != null ? value.Equals(TrueValue) : false;
         }
@@ -295,7 +311,7 @@ namespace Flex.UiWpfFramework.Utils
             : base(type)
         {
         }
-        public override object ConvertTo(ITypeDescriptorContext context, System.Globalization.CultureInfo culture, object value, Type destinationType)
+        public override object ConvertTo(ITypeDescriptorContext context, CultureInfo culture, object value, Type destinationType)
         {
             if (destinationType == typeof(string))
             {
