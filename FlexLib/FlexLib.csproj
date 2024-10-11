@@ -4,10 +4,10 @@
 				<RootNamespace>Flex.Smoothlake.FlexLib</RootNamespace>
 				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 				<ProductVersion>8.0.30703</ProductVersion>
-				<AssemblyVersion>3.6.9</AssemblyVersion>
+				<AssemblyVersion>3.6.8.1</AssemblyVersion>
 				<AssemblyName>FlexLib</AssemblyName>
 				<PackageId>FlexLib</PackageId>
-				<Version>3.6.9</Version>
+				<Version>3.6.8.1</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
 				<PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>
