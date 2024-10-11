@@ -34,16 +34,16 @@ jobs:
       - name: Create the Flexlib package
         run: dotnet pack -c Release FlexLib
       - name: Publish the Flexlib package to GPR
-        run: dotnet nuget push FlexLib/bin/Release/*.nupkg
+        run: dotnet nuget push --skip-duplicate FlexLib/bin/Release/*.nupkg
       - name: Create the Util package
         run: dotnet pack -c Release Util
       - name: Publish the Util package to GPR
-        run: dotnet nuget push Util/bin/Release/*.nupkg
+        run: dotnet nuget push --skip-duplicate Util/bin/Release/*.nupkg
       - name: Create the Vita package
         run: dotnet pack -c Release Vita
       - name: Publish the Vita package to GPR
-        run: dotnet nuget push Vita/bin/Release/*.nupkg
+        run: dotnet nuget push --skip-duplicate Vita/bin/Release/*.nupkg
       - name: Create the UiWpfFramework package
         run: dotnet pack -c Release UiWpfFramework
       - name: Publish the UiWpfFramework package to GPR
-        run: dotnet nuget push UiWpfFramework/bin/Release/*.nupkg
+        run: dotnet nuget push --skip-duplicate UiWpfFramework/bin/Release/*.nupkg
