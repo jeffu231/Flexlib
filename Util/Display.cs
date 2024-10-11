@@ -774,8 +774,10 @@ public static class DisplayHelper
         Debug.WriteLine("Fixing Maestro C External Monitors");
         var displayPaths = DisplayConfig.GetPaths(DisplayConfig.PathFlags.OnlyActivePaths).ToList();
                     
-        displayPaths.First(p => p.OutputTechnology == DisplayConfigPath.VideoOutputTechnology.Internal)
-            .TargetRotation = DisplayConfigPath.Rotation.Rotate270;
+        //  In factory we might not have the internal display plugged in, so we have to handle whether this is null
+        var firstMonitor = displayPaths.FirstOrDefault(p => p.OutputTechnology == DisplayConfigPath.VideoOutputTechnology.Internal);
+        if (firstMonitor != null)
+            firstMonitor.TargetRotation = DisplayConfigPath.Rotation.Rotate270;
                     
         var externalMonitor = displayPaths.FirstOrDefault(p => p.OutputTechnology == DisplayConfigPath.VideoOutputTechnology.HDMI);
         if (externalMonitor != null)
