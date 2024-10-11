@@ -36,7 +36,6 @@ using Ionic.Zip;
 using System.Threading.Tasks;
 using System.ComponentModel;
 using System.Timers;
-using System.Windows.Automation.Peers;
 using Flex.UiWpfFramework.Utils;
 
 namespace Flex.Smoothlake.FlexLib
