@@ -901,8 +901,8 @@ namespace Flex.Smoothlake.FlexLib
                 }
                 else
                 {
-                    Debug.WriteLine("Cannot enable diversity this radio model (" + _radio.Model + ").  " +
-                        "FLEX-6700 or FLEX-6700R required.");
+                    Debug.WriteLine("Cannot enable diversity on this radio model (" + _radio.Model + ").  " +
+                        "FLEX-6600, 6700, 8600, or 6700R required.");
                 }
             }
         }

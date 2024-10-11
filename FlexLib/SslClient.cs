@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,9 +60,16 @@ namespace Flex.Smoothlake.FlexLib
         {
             lock (_writerLockObj)
             {
+                StreamWriter writer = _writer;
+                if (writer == null)
+                {
+                    Disconnect();
+                    return;
+                }
+
                 try
                 {
-                    _writer.WriteLine(message);
+                    writer.WriteLine(message);
                 }
                 catch (Exception)
                 {
@@ -78,7 +88,7 @@ namespace Flex.Smoothlake.FlexLib
         {
             try
             {
-                while (_writer != null)
+                while (_isConnected)
                 {
                     Write("ping from client");
                     Thread.Sleep(TCP_KEEPALIVE_PING_MS);

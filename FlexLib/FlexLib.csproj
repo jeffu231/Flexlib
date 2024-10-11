@@ -4,10 +4,10 @@
 				<RootNamespace>Flex.Smoothlake.FlexLib</RootNamespace>
 				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 				<ProductVersion>8.0.30703</ProductVersion>
-				<AssemblyVersion>3.6.8.1</AssemblyVersion>
+				<AssemblyVersion>3.8.19</AssemblyVersion>
 				<AssemblyName>FlexLib</AssemblyName>
 				<PackageId>FlexLib</PackageId>
-				<Version>3.6.8.1</Version>
+				<Version>3.8.19</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
 				<PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>
@@ -16,11 +16,11 @@
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
-				<TargetFramework>netstandard2.0</TargetFramework>
+				<TargetFramework>net8.0</TargetFramework>
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
-				<TargetFrameworks>net462;net48;netstandard2.0</TargetFrameworks>
+				<TargetFrameworks>net462;net48;net8.0</TargetFrameworks>
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">

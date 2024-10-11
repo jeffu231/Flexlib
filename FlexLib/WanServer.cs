@@ -111,6 +111,8 @@ namespace Flex.Smoothlake.FlexLib
 
         private void ParseMessage(string msg)
         {
+            if (string.IsNullOrEmpty(msg)) return; // prevent issues when debugging
+
             // radio list name=<> callsign=<> serial=<>|more radios|..."
             if (msg.StartsWith("radio list "))
             {

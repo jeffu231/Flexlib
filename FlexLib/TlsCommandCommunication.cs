@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
+using System.Text;
 
 namespace Flex.Smoothlake.FlexLib
 {
@@ -70,13 +73,14 @@ namespace Flex.Smoothlake.FlexLib
 
         public void Disconnect()
         {
-            if (_isConnected)
-            {
-                if(_tlsToRadio != null)
-                    _tlsToRadio.Disconnect();
-                _isConnected = false;
-                OnIsConnectedChanged(_isConnected);
-            }
+            if (!_isConnected) 
+                return;
+            
+            _tlsToRadio?.Write("\x04");
+            _tlsToRadio?.Disconnect();
+            
+            _isConnected = false;
+            OnIsConnectedChanged(_isConnected);
         }
 
         public void Write(string msg)

@@ -46,6 +46,9 @@ namespace Flex.Smoothlake.FlexLib
 
         private static ConcurrentDictionary<string, Radio> _radioDictionaryBySerial;
 
+        private static ConcurrentDictionary<string, Stopwatch> _radio_list_recently_removed;
+        private const int RECENTLY_REMOVED_TIMEOUT_MS = 20000;
+
         private static List<string> filter_serial;
 
         private static string program_name;
@@ -72,7 +75,7 @@ namespace Flex.Smoothlake.FlexLib
         private static bool _logDisconnect = false;
 
         private static bool initialized = false;
-        private static object init_obj = new Object();
+        private static readonly object init_obj = new Object();
         
         private static System.Timers.Timer _cleanupTimer = new System.Timers.Timer(1000);
 
@@ -100,6 +103,8 @@ namespace Flex.Smoothlake.FlexLib
                     _radio_list_timed = new ConcurrentDictionary<string, Stopwatch>();
 
                     _radioDictionaryBySerial = new ConcurrentDictionary<string, Radio>();
+
+                    _radio_list_recently_removed = new ConcurrentDictionary<string, Stopwatch>();
 
                     filter_serial = new List<string>();
                     ProcessFilterFile();
@@ -158,6 +163,16 @@ namespace Flex.Smoothlake.FlexLib
                 RemoveRadio(r);
                 LogDisconnect($"API::CleanupRadioList_ThreadFunction({r})--Timeout waiting on Discovery");
             }
+
+            // clean out any recently removed radios that are no longer recent
+            List<string> no_longer_recent = 
+                _radio_list_recently_removed.Where(x => x.Value.ElapsedMilliseconds > RECENTLY_REMOVED_TIMEOUT_MS)
+                                            .Select(x => x.Key).ToList();
+            foreach (string serial in no_longer_recent)
+            {
+                _radio_list_recently_removed.TryRemove(serial, out Stopwatch watch);
+                if(watch != null) watch.Stop();
+            }
         }
 
         private static void ProcessFilterFile()
@@ -202,6 +217,10 @@ namespace Flex.Smoothlake.FlexLib
                 if (!found) return;
             }
 
+            // keep from reacting to delayed discovery for recently removed radios
+            if (_radio_list_recently_removed.ContainsKey(discovered_radio.Serial))
+                return;
+
             // keep the radio alive in the list if it exists
             if (_radio_list_timed.ContainsKey(discovered_radio.Serial))
             {
@@ -215,7 +234,7 @@ namespace Flex.Smoothlake.FlexLib
                 if (_radioDictionaryBySerial.ContainsKey(discovered_radio.Serial))
                     r = _radioDictionaryBySerial[discovered_radio.Serial];
 
-                if(r != null)
+                if (r != null)
                 {
                     if (r.Model == discovered_radio.Model && r.Serial == discovered_radio.Serial)
                     {
@@ -324,7 +343,7 @@ namespace Flex.Smoothlake.FlexLib
                 _radio_list_timed.TryAdd(discovered_radio.Serial, Stopwatch.StartNew());
             
             OnRadioAddedEventHandler(discovered_radio);
-            //Debug.WriteLine("Adding Radio: " + radio.ToString());
+            //Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + ": Adding Radio: " + discovered_radio.ToString());
         }
 
         private static void WanServer_WanRadioRadioListRecieved(List<Radio> radios)
@@ -342,7 +361,7 @@ namespace Flex.Smoothlake.FlexLib
         {
             LogDiscovery("8 API::OnWanListReceivedEventHandler(" + radios.ToString() + ")");
 
-            // filter out WAN radios with filter.txt
+            // filter out WAN radios with filter.txt, recently removed radios
             for (int i = 0; i < radios.Count; i++)
             {
                 Radio radio = radios[i];
@@ -364,7 +383,14 @@ namespace Flex.Smoothlake.FlexLib
                     {
                         radios.RemoveAt(i);
                         i--;
+                        continue;
                     }
+                }
+
+                if (_radio_list_recently_removed.ContainsKey(radio.Serial)) // ignore any recently removed radios
+                {
+                    radios.RemoveAt(i);
+                    i--;
                 }
             }
 
@@ -397,6 +423,7 @@ namespace Flex.Smoothlake.FlexLib
 
         internal static bool RemoveRadio(Radio radio)
         {
+            //Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + ": API RemoveRadio");
             LogDiscovery("9 API::RemoveRadio(" + radio.ToString() + ")");
             if (radio.Updating) return false; // don't remove the radio if we're just updating
                         
@@ -413,8 +440,10 @@ namespace Flex.Smoothlake.FlexLib
             if (_radio_list_timed.ContainsKey(radio.Serial))
             {
                 _radio_list_timed.TryRemove(radio.Serial, out var watch);
-                watch.Stop();
+                if(watch != null) watch.Stop();
             }
+
+            _radio_list_recently_removed.TryAdd(radio.Serial, Stopwatch.StartNew());
 
             OnRadioRemovedEventHandler(radio);
 

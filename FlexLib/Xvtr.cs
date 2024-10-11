@@ -12,7 +12,11 @@
 // ****************************************************************************
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Diagnostics;
+
 using Flex.UiWpfFramework.Mvvm;
 using Flex.Util;
 
@@ -35,7 +39,7 @@ namespace Flex.Smoothlake.FlexLib
                 _radio.SendCommand("xvtr remove " + _index);
             }
         }
-
+        
         private int _index = -1;
         public int Index
         {

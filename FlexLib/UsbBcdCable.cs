@@ -11,6 +11,12 @@
 // */
 // ****************************************************************************
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Diagnostics;
+
 namespace Flex.Smoothlake.FlexLib
 {
     public class UsbBcdCable : UsbCable, IUsbBcdCable

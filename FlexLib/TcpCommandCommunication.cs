@@ -12,7 +12,9 @@
 // ****************************************************************************
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -211,19 +213,31 @@ namespace Flex.Smoothlake.FlexLib
 
         public void Disconnect()
         {
-            if (_isConnected)
+            if (!_isConnected) 
+                return;
+
+            if (_tcpClient != null && _tcpClient.Connected)
             {
-                if (_tcpClient != null && _tcpClient.Connected)
-                    _tcpClient.Close();
-
-                _tcpClient = null;
-                _isConnected = false;
-                OnIsConnectedChanged(_isConnected);
-
-                lock (_tcpReadSyncObj)
+                // We don't use the Write method here because it could call us if there's an exception, causing
+                // a loop
+                try
                 {
-                    _tcpReadStringBuffer = "";
+                    _tcpClient.GetStream()?.Write(new byte[] {0x04}, 0, 1);
+                    _tcpClient.Close();
                 }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Exception disconnecting from radio: {ex}");
+                }
+            }
+
+            _tcpClient = null;
+            _isConnected = false;
+            OnIsConnectedChanged(_isConnected);
+
+            lock (_tcpReadSyncObj)
+            {
+                _tcpReadStringBuffer = "";
             }
         }
 

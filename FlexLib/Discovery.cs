@@ -55,7 +55,7 @@ namespace Flex.Smoothlake.FlexLib
                 }
             }
 
-            Task.Run((Action) Receive);
+            Task.Run(Receive);
         }
 
         public static void Stop()
@@ -65,9 +65,12 @@ namespace Flex.Smoothlake.FlexLib
 
         private static async void Receive()
         {
+            //Stopwatch watch = new Stopwatch();
+            
             while (active)
             {
                 var packet = await udp.ReceiveAsync();
+                //watch.Restart();
 
                 // since the call above is blocking, we need to check active again here
                 if (!active) 
@@ -84,14 +87,19 @@ namespace Flex.Smoothlake.FlexLib
                     vita.class_id.PacketClassCode != VitaFlex.SL_VITA_DISCOVERY_CLASS)
                     continue;
 
-                ProcessVitaDiscoveryDataPacket(new VitaDiscoveryPacket(packet.Buffer, packet.Buffer.Length));
+                Radio radio = ProcessVitaDiscoveryDataPacket(new VitaDiscoveryPacket(packet.Buffer, packet.Buffer.Length));
+                OnRadioDiscoveredEventHandler(radio);
+
+                //watch.Stop();
+                //if(radio.Serial == "3424-1213-8601-4043")
+                //    Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff")+": Discovery watch stop (" + watch.ElapsedMilliseconds + " ms)");
             }
 
             udp.Close();
             udp = null;
         }
 
-        private static void ProcessVitaDiscoveryDataPacket(VitaDiscoveryPacket packet)
+        private static Radio ProcessVitaDiscoveryDataPacket(VitaDiscoveryPacket packet)
         {
             Radio radio = new Radio();
             string guiClientProgramsCsv = null;
@@ -324,7 +332,7 @@ namespace Flex.Smoothlake.FlexLib
                 radio.GuiClients = guiClients;
             }
 
-            OnRadioDiscoveredEventHandler(radio);
+            return radio;
         }
 
         public static List<GUIClient> ParseGuiClientsFromDiscovery(string guiClientProgramsCsv, string guiClientStationCsv, string guiClientHandlesCsv)
