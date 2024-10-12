@@ -6085,19 +6085,22 @@ namespace Flex.Smoothlake.FlexLib
                 return _meters.FindAll(x => (x.Source.ToUpper() == Meter.SOURCE_AMPLIFIER &&
                     $"0x{x.SourceIndex:X8}" == tuner.Handle)).ToImmutableList();
         }
-        
+
         /// <summary>
-        /// Gets the names of all the discovered meters. This is an add-on to existing FlexLib functionality.
+        /// A list of all the discovered meters. This is an add-on to existing FlexLib functionality.
         /// </summary>
-        /// <returns>A list of the known meters</returns>
-        public List<Meter> GetMeters()
+        /// <returns>An Immutable list of the known meters</returns>
+        public ImmutableList<Meter> Meters
         {
-            lock (_meters)
+            get
             {
-                return _meters.ToList();
+                lock (_meters)
+                {
+                    return _meters.ToImmutableList();
+                }
             }
         }
-
+        
         private void AddMeter(Meter m)
         {
             lock (_meters)
