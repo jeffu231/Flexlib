@@ -167,7 +167,7 @@ namespace Flex.Smoothlake.FlexLib
     #endregion
 
     public delegate void ReplyHandler(int seq, uint resp_val, string s);
-    public class Radio : ObservableObject
+    public partial class Radio : ObservableObject
     {
         #region Variables
 
@@ -6085,21 +6085,6 @@ namespace Flex.Smoothlake.FlexLib
                 return _meters.FindAll(x => (x.Source.ToUpper() == Meter.SOURCE_AMPLIFIER &&
                     $"0x{x.SourceIndex:X8}" == tuner.Handle)).ToImmutableList();
         }
-
-        /// <summary>
-        /// A list of all the discovered meters. This is an add-on to existing FlexLib functionality.
-        /// </summary>
-        /// <returns>An Immutable list of the known meters</returns>
-        public ImmutableList<Meter> Meters
-        {
-            get
-            {
-                lock (_meters)
-                {
-                    return _meters.ToImmutableList();
-                }
-            }
-        }
         
         private void AddMeter(Meter m)
         {
@@ -6129,6 +6114,7 @@ namespace Flex.Smoothlake.FlexLib
                 m.DataReady += new Meter.DataReadyEventHandler(HWAlc_DataReady);
             else if (m.Name == "+13.8A") // A: before the fuse
                 m.DataReady += new Meter.DataReadyEventHandler(Volts_DataReady);
+            //Enhancement over original libary
             else if (m.Name == "MAINFAN") 
                 m.DataReady += new Meter.DataReadyEventHandler(MainFan_DataReady);
         }
@@ -6209,12 +6195,7 @@ namespace Flex.Smoothlake.FlexLib
         {
             OnVoltsDataReady(data);
         }
-
-        void MainFan_DataReady(Meter meter, float data)
-        {
-            OnMainFanDataReady(data);
-        }
-
+        
         /// <summary>
         /// The delegate event handler for meter data events.
         /// Used with the events: ForwardPowerDataReady, ReflectedPowerDataReady,
@@ -6320,17 +6301,6 @@ namespace Flex.Smoothlake.FlexLib
                 HWAlcDataReady(data);
         }
         
-        /// <summary>
-        /// This event is raised when there is new meter data for the Main Fan
-        /// of the radio.  The data is in units of RPM.
-        /// </summary>
-        public event MeterDataReadyEventHandler MainFanDataReady;
-        private void OnMainFanDataReady(float data)
-        {
-            if (MainFanDataReady != null)
-                MainFanDataReady(data);
-        }
-
         #endregion
 
         #region Version Routines
@@ -12446,14 +12416,7 @@ namespace Flex.Smoothlake.FlexLib
         #endregion
 
         #region Xvtr Routines
-
-        /// <summary>
-        /// The list of transverters defined in the radio
-        /// This is an add on to the original FlexLib functionality
-        /// </summary>
-        /// <returns> An Immutable list of Xvtr</returns>
-        public ImmutableList<Xvtr> Xvtrs => _xvtrs.ToImmutableList();
-
+        
         /// <summary>
         /// Create a new XVTR object
         /// </summary>
