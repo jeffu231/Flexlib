@@ -12448,6 +12448,13 @@ namespace Flex.Smoothlake.FlexLib
         #region Xvtr Routines
 
         /// <summary>
+        /// The list of transverters defined in the radio
+        /// This is an add on to the original FlexLib functionality
+        /// </summary>
+        /// <returns> An Immutable list of Xvtr</returns>
+        public ImmutableList<Xvtr> Xvtrs => _xvtrs.ToImmutableList();
+
+        /// <summary>
         /// Create a new XVTR object
         /// </summary>
         /// <returns>A reference to the new XVTR object</returns>
