@@ -10,7 +10,22 @@ namespace Flex.Smoothlake.FlexLib
         BigBend,
         DragonFire
     }
-    
+
+    public enum ModemSupport
+    {
+        Supported,
+        NotSupported,
+        SupportedDevOnly,
+    }
+
+    public enum ModemConfigurationType
+    {
+        Unknown,
+        SingleModem,
+        DualModemCopro,
+        DualModemIndependent,
+    }
+
     public class ModelInfo
     {
         public RadioPlatform Platform { get; init; }
@@ -28,16 +43,49 @@ namespace Flex.Smoothlake.FlexLib
         public string ImageSource { get; init; }
         public int MaxDaxIqChannels { get; init; }
         public ImmutableList<string> SliceList { get; init; }
+        
+        public bool HasOverlordPa { get; init; }
+        public ModemSupport SupportsRapidMModem { get; init; }
+        public ImmutableList<ModemConfigurationType> SupportedRapidMModemConfigTypes { get; init; }
+
+        public bool HasTxAmplifier { get; init; }
 
         private ModelInfo()
         {
         }
 
+        public static ModelInfo GetModelInfoForModel(string modelName)
+        {
+            return ModelTable.GetValueOrDefault(modelName, ModelTable["DEFAULT"]);
+        }
         
         // The redundancy to handle Maestro is janky here.  We need either runtime detection so that we can construct
         // the string, or we need to do something so that the resources show up at the same place.
-        public static readonly ImmutableDictionary<string, ModelInfo> ModelTable = new Dictionary<string, ModelInfo>
+        private static readonly ImmutableDictionary<string, ModelInfo> ModelTable = new Dictionary<string, ModelInfo>
         {
+            {
+                "DEFAULT", new()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = false,
+                    IsDiversityAllowed = false,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = false,
+                    HasBacklitFrontPanel = false,
+                    HasTransmitter = false,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 2,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/6300-small.png",
+                    SliceList = new List<string> {"A", "B"}.ToImmutableList()
+                }
+            },
             {
                 "FLEX-6300", new()
                 {
@@ -53,6 +101,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 2,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6300-small.png",
                     SliceList = new List<string> {"A", "B"}.ToImmutableList()
                 }
@@ -72,6 +124,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 2,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
                     SliceList = new List<string> {"A", "B"}.ToImmutableList()
                 }
@@ -90,6 +146,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 2,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600M.png",
                     SliceList = new List<string> {"A", "B"}.ToImmutableList()
                 }
@@ -109,6 +169,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = true,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6000-Cutout.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -128,6 +192,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -147,6 +215,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600M.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -166,6 +238,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = true,
                     Has2Meters = true,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6000-Cutout.png",
                     SliceList = new List<string> {"A", "B", "C", "D", "E", "F", "G", "H"}.ToImmutableList()
                 }
@@ -185,6 +261,10 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.NotSupported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6000-Cutout.png",
                     SliceList = new List<string> {"A", "B", "C", "D", "E", "F", "G", "H"}.ToImmutableList()
                 }
@@ -204,6 +284,12 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 2,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
                     SliceList = new List<string> {"A", "B"}.ToImmutableList()
                 }
@@ -223,6 +309,12 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 2,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600M.png",
                     SliceList = new List<string> {"A", "B"}.ToImmutableList()
                 }
@@ -242,6 +334,12 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -261,6 +359,12 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600M.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -280,6 +384,12 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.Supported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -299,6 +409,12 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.Supported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -318,6 +434,87 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.Supported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
+                    SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
+                }
+            },
+            {
+                "MLS-9601", new()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = false,
+                    IsDiversityAllowed = true,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = true,
+                    HasBacklitFrontPanel = true,
+                    HasTransmitter = true,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = true,
+                    SupportsRapidMModem = ModemSupport.Supported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
+                    SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
+                }
+            },
+            {
+                "CL-9300", new()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = false,
+                    IsDiversityAllowed = true,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = true,
+                    HasBacklitFrontPanel = true,
+                    HasTransmitter = true,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
+                    SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
+                }
+            },
+            {
+                "CLS-9301", new()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = false,
+                     IsDiversityAllowed = true,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = true,
+                    HasBacklitFrontPanel = true,
+                    HasTransmitter = true,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 4,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = true,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6600.png",
                     SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
                 }
@@ -337,10 +534,115 @@ namespace Flex.Smoothlake.FlexLib
                     Has4Meters = false,
                     Has2Meters = false,
                     MaxDaxIqChannels = 2,
+                    HasOverlordPa = false,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.Supported,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro}.ToImmutableList(),
                     ImageSource = "pack://application:,,,/FlexLib;component/Images/6400.png",
                     SliceList = new List<string> {"A", "B"}.ToImmutableList()
                 }
             },
+            {
+                "AU-510", new ()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = false,
+                    IsDiversityAllowed = false,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = true,
+                    HasBacklitFrontPanel = true,
+                    HasTransmitter = true,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 2,
+                    HasOverlordPa = true,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/A520.png",
+                    SliceList = new List<string> {"A", "B"}.ToImmutableList()
+                }
+            },
+            {
+                "AU-510M", new ()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = true,
+                    IsDiversityAllowed = false,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = true,
+                    HasBacklitFrontPanel = false,
+                    HasTransmitter = true,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 2,
+                    HasOverlordPa = true,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/A520M.png",
+                    SliceList = new List<string> {"A", "B"}.ToImmutableList()
+                }
+            },
+            {
+                "AU-520", new ()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = false,
+                    IsDiversityAllowed = true,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = true,
+                    HasBacklitFrontPanel = true,
+                    HasTransmitter = true,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 4,
+                    HasOverlordPa = true,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/A520.png",
+                    SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
+                }
+            },
+            {
+                "AU-520M", new ()
+                {
+                    Platform = RadioPlatform.BigBend,
+                    IsMModel = true,
+                    IsDiversityAllowed = true,
+                    HasOledDisplay = false,
+                    IsOscillatorSelectAvailable = true,
+                    HasBacklitFrontPanel = false,
+                    HasTransmitter = true,
+                    HasLoopA = false,
+                    HasLoopB = false,
+                    Has4Meters = false,
+                    Has2Meters = false,
+                    MaxDaxIqChannels = 4,
+                    HasOverlordPa = true,
+                    HasTxAmplifier = false,
+                    SupportsRapidMModem = ModemSupport.SupportedDevOnly,
+                    SupportedRapidMModemConfigTypes = new List<ModemConfigurationType> {ModemConfigurationType.SingleModem,
+                                                                                        ModemConfigurationType.DualModemCopro,
+                                                                                        ModemConfigurationType.DualModemIndependent}.ToImmutableList(),
+                    ImageSource = "pack://application:,,,/FlexLib;component/Images/A520M.png",
+                    SliceList = new List<string> {"A", "B", "C", "D"}.ToImmutableList()
+                }
+            }
             
         }.ToImmutableDictionary();
     }

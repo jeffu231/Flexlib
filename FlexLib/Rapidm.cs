@@ -14,14 +14,66 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
-
+using System.Threading.Tasks;
 using Flex.UiWpfFramework.Mvvm;
 
 
 namespace Flex.Smoothlake.FlexLib
 {
+    public record RapidMMessage(string text, bool? usingAle = null, bool? isOneTime = null, bool? isBinary = null, string? station = null);
+
+    public record RapidMOptionStatus(int index, string name, bool activated);
+    public record RapidMPerModemConfig(string version, string serial, string mac, string ip, string subnet, string gw, List<RapidMOptionStatus> options);
+
+    public class RapidMHelper
+    {
+        private static readonly IDictionary<ModemConfigurationType, string> _modemGlobalConfigLabels = new Dictionary<ModemConfigurationType, string> {
+            {ModemConfigurationType.Unknown, "Unknown" },
+            {ModemConfigurationType.SingleModem, "Single Modem" },
+            {ModemConfigurationType.DualModemCopro, "Dual Modem Co-Processing" },
+            {ModemConfigurationType.DualModemIndependent, "Dual Modem Independent" },
+        };
+        public static ModemConfigurationType GlobalConfigFromString(string s)
+        {
+            // For easier parsing, radio status will replace whitespace with underscores.
+            s = s.Replace("_", " ");
+
+            // Default value of 0 is "Unknown".
+            var ret = _modemGlobalConfigLabels.FirstOrDefault(x => x.Value == s).Key;
+            return ret;
+        }
+        public static string GlobalConfigToString(ModemConfigurationType type)
+        {
+            return _modemGlobalConfigLabels[type];
+        }
+
+        public static Tuple<string,int> Get4GBinaryMessageStringFromBinaryFile(string path)
+        {
+            Tuple<string, int> ret = new (string.Empty, 0);
+            if (path == string.Empty) return ret;
+
+            // Copy over as many characters as will fit.
+            try
+            {
+                var fileAttr = new FileInfo(path);
+                byte[] bytes = File.ReadAllBytes(path);
+                if (bytes.Length > maxBinaryFileSize) bytes = bytes.Take(maxBinaryFileSize).ToArray();
+                ret = new(BitConverter.ToString(bytes).Replace("-", string.Empty), bytes.Length);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to access upload file '{path}', exception = {ex.Message}");
+                return ret;
+            }
+            return ret;
+        }
+
+        private static readonly int maxBinaryFileSize = 1024;
+    }
+
     public class RapidM : ObservableObject
     {
         private Radio _radio;
@@ -465,6 +517,102 @@ namespace Flex.Smoothlake.FlexLib
             }
         }
 
+        private string _softwareVersion;
+        public string SoftwareVersion
+        {
+            get => _softwareVersion;
+            set
+            {
+                if (value == _softwareVersion) return;
+                _softwareVersion = value;
+                RaisePropertyChanged(nameof(SoftwareVersion));
+            }
+        }
+
+        private int _sampleRate;
+        public int SampleRate
+        {
+            get => _sampleRate;
+            set
+            {
+                if (value == _sampleRate) return;
+                _sampleRate = value;
+                RaisePropertyChanged(nameof(SampleRate));
+            }
+        }
+
+        private List<bool> _modemsTcpConnected = [false, false];
+        public List<bool> ModemsTcpConnected
+        {
+            get => _modemsTcpConnected;
+            set
+            {
+                if (value == _modemsTcpConnected) return;
+                _modemsTcpConnected = value;
+                RaisePropertyChanged(nameof(ModemsTcpConnected));
+            }
+        }
+
+        private string _operationalStateLabel;
+        public string OperationalStateLabel
+        {
+            get => _operationalStateLabel;
+            set
+            {
+                if (value == _operationalStateLabel) return;
+                _operationalStateLabel = value;
+                RaisePropertyChanged(nameof(OperationalStateLabel));
+            }
+        }
+
+        private ModemConfigurationType _modemGlobalConfigType = ModemConfigurationType.DualModemCopro;
+        public ModemConfigurationType ModemGlobalConfigType
+        {
+            get => _modemGlobalConfigType;
+            set
+            {
+                if (value == _modemGlobalConfigType) return;
+                _modemGlobalConfigType = value;
+                RaisePropertyChanged(nameof(ModemGlobalConfigType));
+            }
+        }
+
+        private RapidMPerModemConfig _modem1Id;
+        public RapidMPerModemConfig Modem1Id
+        {
+            get => _modem1Id;
+            set
+            {
+                if (value == _modem1Id) return;
+                _modem1Id = value;
+                RaisePropertyChanged(nameof(Modem1Id));
+            }
+        }
+
+        private RapidMPerModemConfig _modem2Id;
+        public RapidMPerModemConfig Modem2Id
+        {
+            get => _modem2Id;
+            set
+            {
+                if (value == _modem2Id) return;
+                _modem2Id = value;
+                RaisePropertyChanged(nameof(Modem2Id));
+            }
+        }
+
+        private bool _linked;
+        public bool Linked
+        {
+            get => _linked;
+            set
+            {
+                if (value == _linked) return;
+                _linked = value;
+                RaisePropertyChanged(nameof(Linked));
+            }
+        }
+
         #endregion
 
 
@@ -503,15 +651,173 @@ namespace Flex.Smoothlake.FlexLib
                                 + " tlc=" + _selectedMS110CTLC + " preamble=" + _selectedMS110CPreamble + " constraint=" + _selectedMS110CConstraint);
         }
 
-        public void SendMessage(string message)
+        public async Task Zeroize()
         {
-            string encoded_string = message.Replace(' ', '\u007f');
-            _radio.SendCommand("rapidm tx_message " + encoded_string);
+            // Use rapidm object to allow zeroizing radio as it mainly touches ALE configs, but it is more properly at a
+            // global radio scale.
+            await _radio.SendCommandAsync("radio zeroize");
+        }
+
+        public async Task SendConfigCommand(string configCommand)
+        {
+            // Allow sending raw commands from view model which are set by config files that are loaded by the user.
+            await _radio.SendCommandAsync(configCommand);
+        }
+
+        public void SendMessage(RapidMMessage msg)
+        {
+            // Default to base waveform message using PSK or MS110, if ALE parameters are not set.
+            if (!msg.usingAle ?? false)
+            {
+                _radio.SendCommand($"rapidm tx_message \"{msg.text.Replace(' ', '\u007f')}\"");
+                return;
+            }
+
+            // If using ALE, all parameters must be provided to identify the right messaging settings.
+            if (!msg.isBinary.HasValue || !msg.isOneTime.HasValue)
+            {
+                Debug.WriteLine("Cannot send ALE message without binary and/or one-time flags set.");
+                return;
+            }
+            if (string.IsNullOrEmpty(msg.station))
+            {
+                Debug.WriteLine("Can't send ALE message where no station has been identified.");
+                return;
+            }
+
+            // Avoid redundant string ops by pre-allocating all the space we need
+            StringBuilder command = new StringBuilder("ale ", msg.text.Length + 32);
+            if (msg.isOneTime.Value)
+            {
+                if (Linked)
+                {
+                    Debug.WriteLine("Can't make one-time ALE link to send message when already linked.");
+                    return;
+                }
+                if (msg.isBinary.HasValue && true == msg.isBinary.HasValue)
+                {
+                    Debug.WriteLine("Can't make one-time ALE link when sending binary message.");
+                    return;
+                }
+                command.Append("link ");
+            }
+            else
+            {
+                command.Append(msg.isBinary.Value ? "binary " : "msg ");
+            }
+
+            command.Append($"station={msg.station} \"text={msg.text}\"");
+            Debug.WriteLine($"Sending RM message with '{command}'");
+            _radio.SendCommand(command.ToString());
+        }
+
+        internal List<RapidMOptionStatus> ParseOptions(string s)
+        {
+            List<RapidMOptionStatus> ret = [];
+            // Split each option grouping by tab char. Each grouping is index,name,enable separated by commas.
+            s = s.Replace("\"", string.Empty);
+            string[] options = s.Split('\t');
+            foreach (string option in options)
+            {
+                if (option.Length == 0) continue;
+                string[] optionFields = option.Split(',');
+                RapidMOptionStatus newOption = new(int.Parse(optionFields[0]), optionFields[1], int.Parse(optionFields[2]) == 1);
+                ret.Add(newOption);
+            }
+            return ret;
+        }
+
+        internal void ParseIdStatus(string s)
+        {
+            // The status should indicate if it is referring to the primary or secondary modem in this system.
+            bool isPrimary = true;
+            List<RapidMOptionStatus> tempOptions = [];
+            const string unknownFieldStr = "Unknown";
+            string version = unknownFieldStr;
+            string serial = unknownFieldStr;
+            string mac = unknownFieldStr;
+            string ip = unknownFieldStr;
+            string subnet = unknownFieldStr;
+            string gw = unknownFieldStr;
+
+            string[] words = s.Split(' ');
+            foreach (string kv in words)
+            {
+                if (kv.Length == 0) continue;
+                string[] tokens = kv.Split('=');
+                string key = tokens[0];
+                string value = tokens.Length > 1 ? tokens[1] : null;
+                switch (key.ToLower())
+                {
+                    case ("primary"):
+                        {
+                            isPrimary = true;
+                            break;
+                        }
+                    case ("secondary"):
+                        {
+                            isPrimary = false;
+                            break;
+                        }
+                    case ("version"):
+                        {
+                            version = value;
+                            break;
+                        }
+                    case ("serial"):
+                        {
+                            serial = value;
+                            break;
+                        }
+                    case ("mac"):
+                        {
+                            mac = value;
+                            break;
+                        }
+                    case ("ip"):
+                        {
+                            ip = value;
+                            break;
+                        }
+                    case ("subnet"):
+                        {
+                            subnet = value;
+                            break;
+                        }
+                    case ("gateway"):
+                        {
+                            gw = value;
+                            break;
+                        }
+                    case ("options"):
+                        {
+                            Debug.WriteLine($"Parsing options: {kv.Substring("options=".Length)}");
+                            tempOptions = ParseOptions(kv.Substring("options=".Length));
+                            break;
+                        }
+                    default:
+                        {
+                            Debug.Write($"Unknown rapidm id field '{kv}'");
+                            break;
+                        }
+                }
+            }
+
+            if (isPrimary)
+            {
+                Modem1Id = new(version, serial, mac, ip, subnet, gw, tempOptions);
+            }
+            else
+            {
+                Modem2Id = new(version, serial, mac, ip, subnet, gw, tempOptions);
+            }
         }
 
         internal void ParseStatus(string s)
         {
             string[] words = s.Split(' ');
+
+            // TODO - get dual/single status from a rapidm message. Add to API if not currently supplied.
 
             if (words.Length < 2)
             {
@@ -530,11 +836,17 @@ namespace Flex.Smoothlake.FlexLib
 
             foreach (string kv in words)
             {
-
                 string[] tokens = kv.Split('=');
                 if (tokens.Length != 2)
                 {
-                    Debug.WriteLine("RapidM::ParseStatus: Invalid key/value pair (" + kv + ")");
+                    if (tokens[0] == "id")
+                    {
+                        ParseIdStatus(s.Substring("id ".Length)); // "rapidm id ... "
+                    }
+                    else
+                    {
+                        Debug.WriteLine("RapidM::ParseStatus: Invalid key/value pair (" + kv + ")");
+                    }
                     continue;
                 }
 
@@ -562,7 +874,6 @@ namespace Flex.Smoothlake.FlexLib
                             }
                         }
                         break;
-
                     case "rate":
                         {
                             if (_currentPSKRate == value) continue;
@@ -681,6 +992,36 @@ namespace Flex.Smoothlake.FlexLib
                             RaisePropertyChanged("CurrentMS110CDataRate");
                         }
                         break;
+                    case "rapidm_version":
+                        {
+                            SoftwareVersion = value;
+                            break;
+                        }
+                    case "rapidm_system_sample_rate":
+                        {
+                            SampleRate = int.Parse(value);
+                            break;
+                        }
+                    case "is_tcp_pri_connected":
+                        {
+                            ModemsTcpConnected[0] = bool.Parse(value);
+                            break;
+                        }
+                    case "is_tcp_sec_connected":
+                        {
+                            ModemsTcpConnected[1] = bool.Parse(value);
+                            break;
+                        }
+                    case "operational_state":
+                        {
+                            OperationalStateLabel = value;
+                            break;
+                        }
+                    case "global_config":
+                        {
+                            ModemGlobalConfigType = RapidMHelper.GlobalConfigFromString(value);
+                            break;
+                        }
                 }
             }
         }

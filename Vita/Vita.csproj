@@ -1,14 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 		<PropertyGroup>
-				<TargetFrameworks>netstandard2.0</TargetFrameworks>
+				<TargetFramework>net8.0</TargetFramework>
 				<OutputType>Library</OutputType>
 				<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 				<ProductVersion>8.0.30703</ProductVersion>
-				<AssemblyVersion>3.8.19</AssemblyVersion>
 				<AssemblyName>Flex.Vita</AssemblyName>
 				<PackageId>Flex.Vita</PackageId>
-				<Version>3.8.19</Version>
+				<Version>4.1.5</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
 			 <PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>

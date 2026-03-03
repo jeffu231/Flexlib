@@ -12,9 +12,11 @@
 // ****************************************************************************
 
 using System;
-using System.Reflection;
 using System.ComponentModel;
 using System.Globalization;
+using System.Reflection;
+
+
 
 namespace Flex.UiWpfFramework.Utils
 {
@@ -47,6 +49,32 @@ namespace Flex.UiWpfFramework.Utils
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
             return values.OfType<bool>().All(b => b) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class BooleanAndToInverseVisibilityMultiConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values.OfType<bool>().All(b => b) ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class BooleanOrToVisibilityMultiConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values.OfType<bool>().Any(b => b) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
@@ -88,7 +116,20 @@ namespace Flex.UiWpfFramework.Utils
     {
         public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
         {
-            return values.OfType<bool>().All(b => b) ? true : false;
+            return values.OfType<bool>().All(b => b);
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class BooleanOrMultiConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values.OfType<bool>().Any(b => b);
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
@@ -295,6 +336,37 @@ namespace Flex.UiWpfFramework.Utils
         }
     }
 
+    public class BoolOrToValueConverter<T> : IMultiValueConverter
+    {
+        public T TrueValue { get; set; }
+        public T FalseValue { get; set; }
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values.OfType<bool>().Any(b => b) ? TrueValue : FalseValue;
+        }
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class BoolAndToValueConverter<T> : IMultiValueConverter
+    {
+        public T TrueValue { get; set; }
+        public T FalseValue { get; set; }
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values.OfType<bool>().All(b => b) ? TrueValue : FalseValue;
+        }
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    public class BoolOrToMarginConverter : BoolOrToValueConverter<Thickness> { }
+    public class BoolOrToStringConverter : BoolOrToValueConverter<string> { }
+    public class BoolAndToStringConverter : BoolAndToValueConverter<string> { }
     public class BoolToStringConverter : BoolToValueConverter<String> { }
 
     public class BoolToCustomVisibilityConverter : BoolToValueConverter<Visibility> { }
@@ -304,6 +376,8 @@ namespace Flex.UiWpfFramework.Utils
     public class BoolToBrushConverter : BoolToValueConverter<Brush> { }
 
     public class BoolToThicknessConverter : BoolToValueConverter<Thickness> { }
+
+    public class BoolToFloatConverter : BoolToValueConverter<float> { }
 #endif
     public class EnumDescriptionTypeConverter : EnumConverter
     {
@@ -331,4 +405,89 @@ namespace Flex.UiWpfFramework.Utils
             return base.ConvertTo(context, culture, value, destinationType);
         }
     }
+#if !(NET6_0_OR_GREATER || NETSTANDARD2_0_OR_GREATER)
+    public class TwoArgsToTupleValueMultiConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return (values[0], values[1]);
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+    
+    public class VisibilityToHeightConverter : IValueConverter
+    {
+        public float Height { get; set; }
+
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value == null)
+                return 0;
+            
+            return (Visibility) value == Visibility.Visible ? Height : 0;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return DependencyProperty.UnsetValue;
+        }
+    }
+    
+    public class UrlToQrConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            // TODO: Should this by a URL type instead of a string?
+            if (value is not string urlString)
+                return DependencyProperty.UnsetValue;
+
+            var url = new PayloadGenerator.Url(urlString).ToString();
+            var generator = new QRCodeGenerator();
+            var data = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+            var code = new XamlQRCode(data);
+            var image = code.GetGraphic(20);
+
+            return image;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return DependencyProperty.UnsetValue;
+        }
+
+    }
+
+    public class MillisecondsToRoundedSecondsConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            // Convert a uint in milliseconds to a float in seconds.
+            // Optional parameter will indicate the desired precision in decimal places.
+            if (value is uint msec)
+            {
+                double sec = msec / 1000.0;
+                int precision = 3; // By default don't round at all - preserve to thousandths place.
+                if (parameter is string s && int.TryParse(s, out int precisionParsed))
+                {
+                    if (precisionParsed > 3) precisionParsed = 3; // Input is whole milliseconds, so we can't have more than 3 decimal places.
+                    if (precisionParsed < 0) precisionParsed = 0; // Obviously can't have fewer than 0 decimal places.
+                    precision = precisionParsed;
+                }
+                return Math.Round(sec, precision);
+            }
+            return Binding.DoNothing;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            // This is for one-way bindings only.
+            throw new NotImplementedException();
+        }
+    }
+#endif
 }
+

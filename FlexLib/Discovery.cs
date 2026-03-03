@@ -29,12 +29,11 @@ namespace Flex.Smoothlake.FlexLib
     {
         private const int DISCOVERY_PORT = 4992;
         private static UdpClient udp;
-        private static bool active = false;
+
+        private static CancellationTokenSource _loopCts;
 
         public static void Start()
         {
-            active = true;
-
             bool done = false;
             int error_count = 0;
             while (!done)
@@ -55,25 +54,29 @@ namespace Flex.Smoothlake.FlexLib
                 }
             }
 
+            _loopCts = new CancellationTokenSource();
+
             Task.Run(Receive);
         }
 
         public static void Stop()
         {
-            active = false;
+            _loopCts.Cancel();
         }
 
         private static async void Receive()
         {
             //Stopwatch watch = new Stopwatch();
+            var token = _loopCts.Token;
             
-            while (active)
+            while (!token.IsCancellationRequested)
             {
+                // TODO: Pass the cancellation token here when we move to .NET 6/8
                 var packet = await udp.ReceiveAsync();
                 //watch.Restart();
 
                 // since the call above is blocking, we need to check active again here
-                if (!active) 
+                if (token.IsCancellationRequested) 
                     break;
 
                 // ensure that the packet is at least long enough to inspect for VITA info
@@ -214,6 +217,17 @@ namespace Flex.Smoothlake.FlexLib
                             radio.IP = temp;
                         }
                         break;
+                    case "license_is_unknown":
+                        {
+                            if (!uint.TryParse(value, out uint temp) || temp > 1)
+                            {
+                                Debug.WriteLine($"FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid key/value pair ({kv})");
+                                continue;
+                            }
+
+                            radio.HasUnknownRadioLicense = Convert.ToBoolean(temp);
+                        }
+                        break;
                     case "licensed_clients":
                         {
                             int temp;
@@ -278,19 +292,6 @@ namespace Flex.Smoothlake.FlexLib
                     case "radio_license_id":
                         radio.RadioLicenseId = StringHelper.Sanitize(value);
                         break;
-                    case "requires_additional_license":
-                        {
-                            uint temp;
-                            bool b = uint.TryParse(value, out temp);
-                            if (!b || temp > 1)
-                            {
-                                Debug.WriteLine("FlexLib::Discovery::ProcessVitaDiscoveryDataPacket: Invalid value (" + kv + ")");
-                                continue;
-                            }
-
-                            radio.RequiresAdditionalLicense = Convert.ToBoolean(temp);
-                        }
-                        break;
                     case "serial":
                         radio.Serial = StringHelper.Sanitize(value);
                         break;
@@ -323,6 +324,15 @@ namespace Flex.Smoothlake.FlexLib
                             radio.IsInternetConnected = Convert.ToBoolean(temp);
                         }
                         break;
+                    case "external_port_link":
+                    {
+                        if (uint.TryParse(value, out var link))
+                        {
+                            radio.ExternalPortLink = link == 1;
+                        }
+
+                        break;
+                    }
                 }
             }
 

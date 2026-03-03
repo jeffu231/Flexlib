@@ -12,488 +12,326 @@
 // ****************************************************************************
 
 using System;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
-
-using Flex.Util;
 using System.Linq;
 using System.Timers;
+using Flex.Util;
 
-namespace Flex.Smoothlake.FlexLib
+namespace Flex.Smoothlake.FlexLib;
+
+public class API
 {
-    public class API
+    private const uint FLEX_OUI = 0x1C2D;
+    public const double RADIOLIST_TIMEOUT_SECONDS = 17.0;
+
+    private readonly struct RadioInfo(Radio radio)
     {
-        const uint FLEX_OUI = 0x1C2D;
+        public Radio Radio { get; } = radio;
+        public Stopwatch Timer { get; } = Stopwatch.StartNew();
+    }
 
-        private static List<Radio> radio_list;
-        /// <summary>
-        /// Contains a list of discovered Radios on the network
-        /// </summary>
-        public static List<Radio> RadioList
-        {
-            get
-            {
-                lock(radio_list)
-                    return radio_list; 
-            }
-        }
-
-        private static ConcurrentDictionary<string, Stopwatch> _radio_list_timed;
-        public const double RADIOLIST_TIMEOUT_SECONDS = 17.0;
-
-        private static ConcurrentDictionary<string, Radio> _radioDictionaryBySerial;
-
-        private static ConcurrentDictionary<string, Stopwatch> _radio_list_recently_removed;
-        private const int RECENTLY_REMOVED_TIMEOUT_MS = 20000;
-
-        private static List<string> filter_serial;
-
-        private static string program_name;
-        /// <summary>
-        /// Sets the name of the program that is using this API
-        /// </summary>
-        public static string ProgramName
-        {
-            get { return program_name; }
-            set { program_name = value; }
-        }
-
-        private static bool is_gui = false;
-        /// <summary>
-        /// Sets whether the program using this API is a GUI
-        /// </summary>
-        public static bool IsGUI
-        {
-            get { return is_gui; }
-            set { is_gui = value; }
-        }
-
-        private static bool _logDiscovery = false;
-        private static bool _logDisconnect = false;
-
-        private static bool initialized = false;
-        private static readonly object init_obj = new Object();
         
-        private static System.Timers.Timer _cleanupTimer = new System.Timers.Timer(1000);
+    private static readonly ConcurrentDictionary<string, RadioInfo> RadioDictionary = new ();
+    private static readonly ImmutableList<string> FilterSerial = ProcessFilterFile();
 
-        /// <summary>
-        /// Creates a UDP socket, listens for new radios on the network, and adds them to the RadioList
-        /// </summary>
-        public static void Init()
+    /// <summary>
+    /// Sets the name of the program that is using this API
+    /// </summary>
+    public static string ProgramName { get; set; }
+
+    /// <summary>
+    /// Sets whether the program using this API is a GUI
+    /// </summary>
+    public static bool IsGUI { get; set; } = false;
+
+    private static bool _logDiscovery;
+    private static bool _logDisconnect;
+
+    private static bool _initialized;
+    private static readonly object InitObj = new ();
+        
+    private static readonly Timer CleanupTimer = new (1000);
+
+    /// <summary>
+    /// Contains a list of discovered Radios on the network
+    /// </summary>
+    // TODO: This should be an immutable list, but that changes the API
+    public static List<Radio> RadioList => RadioDictionary.Values.Select(ri => ri.Radio).ToList();
+        
+    /// <summary>
+    /// Creates a UDP socket, listens for new radios on the network, and adds them to the RadioList
+    /// </summary>
+    public static void Init()
+    {
+        // ensure that the initialized variable is atomically set here (i.e. only let one instance through here)
+        lock (InitObj)
         {
-            // ensure that the initialized variable is atomically set here (i.e. only let one instance through here)
-            lock (init_obj)
-            {
-                if (!initialized)
-                {
-                    initialized = true;
+            if (_initialized)
+                return;
+                
+            _initialized = true;
 
-                    string log_enable_file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FlexRadio Systems", "log_discovery.txt");
-                    _logDiscovery = File.Exists(log_enable_file);
+            var logEnableFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) +
+                                @"\FlexRadio Systems\log_discovery.txt";
+            _logDiscovery = File.Exists(logEnableFile);
 
-                    log_enable_file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) , "FlexRadio Systems","log_disconnect.txt");
-                    _logDisconnect = File.Exists(log_enable_file);
+            logEnableFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) +
+                            @"\FlexRadio Systems\log_disconnect.txt";
+            _logDisconnect = File.Exists(logEnableFile);
 
-                    LogDiscovery("API::Init()");
+            LogDiscovery("API::Init()");
 
-                    radio_list = new List<Radio>();
-                    _radio_list_timed = new ConcurrentDictionary<string, Stopwatch>();
+            Discovery.RadioDiscovered += Discovery_RadioDiscovered;
+            Discovery.Start();
 
-                    _radioDictionaryBySerial = new ConcurrentDictionary<string, Radio>();
+            WanServer.WanRadioRadioListRecieved += WanServer_WanRadioRadioListReceived;
 
-                    _radio_list_recently_removed = new ConcurrentDictionary<string, Stopwatch>();
+            CleanupTimer.AutoReset = true;
+            CleanupTimer.Elapsed += RadioListMaid;
+            CleanupTimer.Enabled = true;
+        }
+    }
 
-                    filter_serial = new List<string>();
-                    ProcessFilterFile();
-
-                    Discovery.RadioDiscovered += new RadioDiscoveredEventHandler(Discovery_RadioDiscovered);
-                    Discovery.Start();
-
-                    WanServer.WanRadioRadioListRecieved += WanServer_WanRadioRadioListRecieved;
-
-                    _cleanupTimer.AutoReset = true;
-                    _cleanupTimer.Elapsed += RadioListMaid;
-                    _cleanupTimer.Enabled = true;
-                }
-            }
+    public static void CloseSession()
+    {
+        Discovery.Stop();
+        foreach (var radio in RadioList)
+        {
+            radio.Updating = false;
+            RemoveRadio(radio);
+            LogDisconnect($"API::CloseSession({radio})--Application is closing");
         }
 
-        public static void CloseSession()
+        _initialized = false;
+    }
+
+    private static void RadioListMaid(object source, ElapsedEventArgs args)
+    {
+        var removeList = RadioDictionary.Values.Where(i =>
+            i.Radio is {Updating: false, Connected: false} &&
+            i.Timer.Elapsed.TotalSeconds > RADIOLIST_TIMEOUT_SECONDS).Select(i => i.Radio);
+
+        // now loop through the remove list and take action
+        foreach (var r in removeList)
         {
-            Discovery.Stop();
+            RemoveRadio(r);
+            LogDisconnect($"API::CleanupRadioList_ThreadFunction({r})--Timeout waiting on Discovery");
+        }
+    }
 
-            while(radio_list.Count > 0)
-            {
-                Radio r = radio_list[0];
+    private static ImmutableList<string> ProcessFilterFile()
+    {
+        var devFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\FlexRadio Systems\filter.txt";
+        if (!File.Exists(devFile)) 
+            return ImmutableList<string>.Empty;
 
-                // since we are shutting down, ensure that we don't hang because we are in the middle of an update
-                if (r.Updating) r.Updating = false;
+        using var reader = File.OpenText(devFile);
+        return reader.ReadToEnd().Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrEmpty(l)).ToImmutableList();
+    }
 
-                RemoveRadio(r);
-                LogDisconnect("API::CloseSession(" + r.ToString() + ")--Application is closing");
-            }
-
-            initialized = false;
+    private static void RefreshRadio(Radio radio, Radio discoveredRadio)
+    {
+        LogDiscovery($"2 API::Discovery_RadioDiscovered({discoveredRadio}) - IP/Model/Serial match found in list");
+        var versionOne = FlexVersion.Parse("1.0.0.0");
+        if (radio.DiscoveryProtocolVersion <= versionOne && discoveredRadio.DiscoveryProtocolVersion > versionOne)
+        {
+            LogDiscovery(
+                $"3 API::Discovery_RadioDiscovered({discoveredRadio}) - newer protocol, updating radio info");
+            radio.DiscoveryProtocolVersion = discoveredRadio.DiscoveryProtocolVersion;
+            radio.Callsign = discoveredRadio.Callsign;
+            radio.Nickname = discoveredRadio.Nickname;
+            radio.Serial = discoveredRadio.Serial;
         }
 
-        private static void RadioListMaid(object source, ElapsedEventArgs args)
+        if (discoveredRadio.Version != radio.Version)
         {
-            // create a list to use to store radios to be removed
-            var removeList = new List<Radio>();
-
-            removeList.Clear();
-            
-            lock (radio_list)
-            {
-                removeList.AddRange(from r in radio_list
-                    where r != null
-                    where !r.Updating
-                    where !r.Connected
-                    where _radio_list_timed.ContainsKey(r.Serial) &&
-                          _radio_list_timed[r.Serial].Elapsed.TotalSeconds > RADIOLIST_TIMEOUT_SECONDS
-                    select r);
-            }
-
-            // now loop through the remove list and take action
-            foreach (var r in removeList)
-            {
-                RemoveRadio(r);
-                LogDisconnect($"API::CleanupRadioList_ThreadFunction({r})--Timeout waiting on Discovery");
-            }
-
-            // clean out any recently removed radios that are no longer recent
-            List<string> no_longer_recent = 
-                _radio_list_recently_removed.Where(x => x.Value.ElapsedMilliseconds > RECENTLY_REMOVED_TIMEOUT_MS)
-                                            .Select(x => x.Key).ToList();
-            foreach (string serial in no_longer_recent)
-            {
-                _radio_list_recently_removed.TryRemove(serial, out Stopwatch watch);
-                if(watch != null) watch.Stop();
-            }
+            LogDiscovery($"4 API::Discovery_RadioDiscovered({discoveredRadio}) - updating radio version");
+            Debug.WriteLine($"Version Updated-{radio}");
+            radio.Version = discoveredRadio.Version;
+            radio.Updating = false;
         }
 
-        private static void ProcessFilterFile()
+        // update the status if this is a newer discovery version
+        if (discoveredRadio.DiscoveryProtocolVersion > versionOne)
         {
-            string dev_file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) , "FlexRadio Systems", "filter.txt");
-            if (!File.Exists(dev_file)) return;
-
-            TextReader reader = File.OpenText(dev_file);
-
-            string buffer = reader.ReadToEnd();
-            reader.Close();
-
-            string[] lines = buffer.Split('\n');
-
-            foreach (string s in lines)
+            if (discoveredRadio.Status == "Available" && radio.Status == "Updating")
             {
-                string temp = s.Trim();
-                if (temp.Length > 0)
-                {
-                    //Console.WriteLine("Adding " + s + " to filter list");
-                    filter_serial.Add(temp);
-                }
+                LogDiscovery($"5 API::Discovery_RadioDiscovered({discoveredRadio}) - Radio coming out of update");
+                radio.Updating = false;
             }
+
+            if (radio.Status != discoveredRadio.Status)
+            {
+                LogDiscovery($"5 API::Discovery_RadioDiscovered({discoveredRadio}) - update radio status - {discoveredRadio.Status}");
+                radio.Status = discoveredRadio.Status;
+            }
+                
+            radio.GuiClientIPs = discoveredRadio.GuiClientIPs;
+            radio.GuiClientHosts = discoveredRadio.GuiClientHosts;
+            radio.GuiClientStations = discoveredRadio.GuiClientStations;
+        }
+        
+        radio.IsInternetConnected = discoveredRadio.IsInternetConnected;
+        radio.MaxLicensedVersion = discoveredRadio.MaxLicensedVersion;
+        radio.FrontPanelMacAddress = discoveredRadio.FrontPanelMacAddress;
+        radio.RadioLicenseId = discoveredRadio.RadioLicenseId;
+        radio.Callsign = discoveredRadio.Callsign;
+        radio.Nickname = discoveredRadio.Nickname;
+        radio.LicensedClients = discoveredRadio.LicensedClients;
+        radio.AvailableClients = discoveredRadio.AvailableClients;
+        radio.MaxPanadapters = discoveredRadio.MaxPanadapters;
+        radio.AvailablePanadapters = discoveredRadio.AvailablePanadapters;
+        radio.MaxSlices = discoveredRadio.MaxSlices;
+        radio.AvailableSlices = discoveredRadio.AvailableSlices;
+        radio.ExternalPortLink = discoveredRadio.ExternalPortLink;
+        radio.HasUnknownRadioLicense = discoveredRadio.HasUnknownRadioLicense;
+
+        if (!radio.IP.Equals(discoveredRadio.IP))
+        {
+            radio.IP = discoveredRadio.IP;
+            OnRadioChangedIpEventHander(discoveredRadio);
         }
 
-        private static void Discovery_RadioDiscovered(Radio discovered_radio)
+        radio.UpdateGuiClientsList(newGuiClients: discoveredRadio.GuiClients);
+    }
+
+    private static void Discovery_RadioDiscovered(Radio discoveredRadio)
+    {
+        if (FilterSerial.Count > 0 &&
+            FilterSerial.FirstOrDefault(f => discoveredRadio.Serial.Contains(f)) == null)
+            return;
+
+        // keep the radio alive in the list if it exists
+        if (RadioDictionary.TryGetValue(discoveredRadio.Serial, out var radioEntry))
         {
-            //Log("1 API::Discovery_RadioDiscovered("+discovered_radio.ToString()+")");
-            if (filter_serial.Count > 0)
-            {
-                bool found = false;
-                foreach (string s in filter_serial)
-                {
-                    if (discovered_radio.Serial.Contains(s))
-                    {
-                        found = true;
-                        //Debug.WriteLine("Found radio that matches filter: " + radio.Serial);
-                        break;
-                    }
-                }
+            radioEntry.Timer.Restart();
+        }
 
-                if (!found) return;
-            }
-
-            // keep from reacting to delayed discovery for recently removed radios
-            if (_radio_list_recently_removed.ContainsKey(discovered_radio.Serial))
+        // If we already have a radio in the list, just refresh it.
+        if (RadioDictionary.TryGetValue(discoveredRadio.Serial, out var ri))
+        {
+            var radio = ri.Radio;
+            // TODO: Should this ever really happen?
+            if (radio.Model != discoveredRadio.Model || radio.Serial != discoveredRadio.Serial)
                 return;
 
-            // keep the radio alive in the list if it exists
-            if (_radio_list_timed.ContainsKey(discovered_radio.Serial))
-            {
-                _radio_list_timed[discovered_radio.Serial].Restart();
-            }
+            RefreshRadio(radio, discoveredRadio);
+            return;
+        }
 
+        Debug.WriteLine($"Discovered {discoveredRadio}");
+        LogDiscovery($"6 API::Discovery_RadioDiscovered({discoveredRadio}) - Add radio to list");
+
+        RadioDictionary.TryAdd(discoveredRadio.Serial, new RadioInfo(discoveredRadio));
+
+        OnRadioAddedEventHandler(discoveredRadio);
+    }
+
+    private static void WanServer_WanRadioRadioListReceived(List<Radio> radios)
+    {
+        OnWanListReceivedEventHandler(radios);
+    }
+
+    public delegate void WanListReceivedEventHandler(List<Radio> radios);
+    /// <summary>
+    /// This event fires when a new radio on the network has been detected
+    /// </summary>
+    public static event WanListReceivedEventHandler WanListReceived;
+
+    private static void OnWanListReceivedEventHandler(List<Radio> radios)
+    {
+        LogDiscovery($"8 API::OnWanListReceivedEventHandler({radios})");
+
+        var filteredRadios = FilterSerial.Count > 0
+            ? radios.Where(r => FilterSerial.Any(f => r.Serial.Contains(f))).ToList()
+            : radios;
+
+        WanListReceived?.Invoke(filteredRadios);
+    }
+
+    public delegate void RadioAddedEventHandler(Radio radio);
+    /// <summary>
+    /// This event fires when a new radio on the network has been detected
+    /// </summary>
+    public static event RadioAddedEventHandler RadioAdded;
+
+    private static void OnRadioAddedEventHandler(Radio radio)
+    {
+        LogDiscovery($"7 API::OnRadioAddedEventHandler({radio})");
+        RadioAdded?.Invoke(radio);
+    }
+
+    public delegate void RadioRemovedEventHandler(Radio radio);
+    public static event RadioRemovedEventHandler RadioRemoved;
+
+    private static void OnRadioRemovedEventHandler(Radio radio)
+    {
+        LogDiscovery($"8 API::OnRadioRemovedEventHandler({radio})");
+        RadioRemoved?.Invoke(radio);
+    }
+
+    public delegate void RadioChangedIpEventHandler(Radio radio);
+
+    public static event RadioChangedIpEventHandler RadioChangedIp;
+
+    private static void OnRadioChangedIpEventHander(Radio radio)
+    {
+        RadioChangedIp?.Invoke(radio);
+    }
+
+    internal static void RemoveRadio(Radio radio)
+    {
+        LogDiscovery($"9 API::RemoveRadio({radio})");
+        if (radio.Updating) 
+            return; // don't remove the radio if we're just updating
+
+        if (!RadioDictionary.TryRemove(radio.Serial, out var info))
+            return;
+
+        info.Timer.Stop();
+        OnRadioRemovedEventHandler(radio);
+
+        // disconnect the radio object
+        if (radio.Connected)
+            radio.Disconnect();
+    }
+        
+    private static readonly string DisconnectLogPathName = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+                                                           + @"\FlexRadio Systems\LogFiles\SSDR_Disconnect.log";
+    private static readonly string DiscoveryLogPathName = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+                                                          + @"\FlexRadio Systems\LogFiles\SSDR_Discovery.log";
+
+    private static void LogToFile(string pathName, string msg)
+    {
+        try
+        {
+            using var writer = new StreamWriter(pathName, true);
+            var line = $"{DateTime.Now.ToShortDateString()} {DateTime.Now:HH:mm:ss} {AppDomain.CurrentDomain.FriendlyName} {msg}";
+            writer.WriteLine(line);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error writing to {pathName}: {ex}");
+        }
+    }
+
+    private static void LogDiscovery(string msg)
+    {
+        if(!_logDiscovery) 
+            return;
+
+        LogToFile(DiscoveryLogPathName, msg);
+    }
+
+    internal static void LogDisconnect(string msg)
+    {
+        if (!_logDisconnect) 
+            return;
             
-            Radio r = null;
-            lock (radio_list)
-            {
-                if (_radioDictionaryBySerial.ContainsKey(discovered_radio.Serial))
-                    r = _radioDictionaryBySerial[discovered_radio.Serial];
-
-                if (r != null)
-                {
-                    if (r.Model == discovered_radio.Model && r.Serial == discovered_radio.Serial)
-                    {
-                        LogDiscovery("2 API::Discovery_RadioDiscovered(" + discovered_radio.ToString() + ") - IP/Model/Serial match found in list");
-                        ulong ver_1_0 = FlexVersion.Parse("1.0.0.0");
-                        if (r.DiscoveryProtocolVersion <= ver_1_0 &&
-                            discovered_radio.DiscoveryProtocolVersion > ver_1_0)
-                        {
-                            LogDiscovery("3 API::Discovery_RadioDiscovered(" + discovered_radio.ToString() + ") - newer protocol, updating radio info");
-                            r.DiscoveryProtocolVersion = discovered_radio.DiscoveryProtocolVersion;
-                            r.Callsign = discovered_radio.Callsign;
-                            r.Nickname = discovered_radio.Nickname;
-                            r.Serial = discovered_radio.Serial;
-                        }
-
-                        if (discovered_radio.Version != r.Version)
-                        {
-                            LogDiscovery("4 API::Discovery_RadioDiscovered(" + discovered_radio.ToString() + ") - updating radio version");
-                            Debug.WriteLine("Version Updated-" + r.ToString());
-                            r.Version = discovered_radio.Version;
-                            r.Updating = false;
-                        }
-
-                        // update the status if this is a newer discovery version
-                        if (discovered_radio.DiscoveryProtocolVersion > ver_1_0)
-                        {
-                            if (discovered_radio.Status == "Available" && r.Status == "Updating")
-                            {
-                                LogDiscovery("5 API::Discovery_RadioDiscovered(" + discovered_radio.ToString() + ") - Radio coming out of update");
-                                r.Updating = false;
-                            }
-
-                            if (r.Status != discovered_radio.Status)
-                            {
-                                LogDiscovery("5 API::Discovery_RadioDiscovered(" + discovered_radio.ToString() + ") - update radio status - " + discovered_radio.Status);
-                                r.Status = discovered_radio.Status;
-                            }
-
-                            if (r.GuiClientIPs != discovered_radio.GuiClientIPs)
-                                r.GuiClientIPs = discovered_radio.GuiClientIPs;
-
-                            if (r.GuiClientHosts != discovered_radio.GuiClientHosts)
-                                r.GuiClientHosts = discovered_radio.GuiClientHosts;
-
-                            if (r.GuiClientStations != discovered_radio.GuiClientStations)
-                                r.GuiClientStations = discovered_radio.GuiClientStations;
-                        }
-
-                        if (r.IsInternetConnected != discovered_radio.IsInternetConnected)
-                            r.IsInternetConnected = discovered_radio.IsInternetConnected;
-
-                        if (r.MaxLicensedVersion != discovered_radio.MaxLicensedVersion)
-                            r.MaxLicensedVersion = discovered_radio.MaxLicensedVersion;
-
-                        if (r.RequiresAdditionalLicense != discovered_radio.RequiresAdditionalLicense)
-                            r.RequiresAdditionalLicense = discovered_radio.RequiresAdditionalLicense;
-
-                        if (r.FrontPanelMacAddress != discovered_radio.FrontPanelMacAddress)
-                            r.FrontPanelMacAddress = discovered_radio.FrontPanelMacAddress;
-
-                        if (r.RadioLicenseId != discovered_radio.RadioLicenseId)
-                            r.RadioLicenseId = discovered_radio.RadioLicenseId;
-
-                        if (r.Callsign != discovered_radio.Callsign)
-                            r.Callsign = discovered_radio.Callsign;
-
-                        if (r.Nickname != discovered_radio.Nickname)
-                            r.Nickname = discovered_radio.Nickname;
-
-                        if (!r.IP.Equals(discovered_radio.IP))
-                            r.IP = discovered_radio.IP;
-
-                        if (r.LicensedClients != discovered_radio.LicensedClients)
-                            r.LicensedClients = discovered_radio.LicensedClients;
-
-                        if (r.AvailableClients != discovered_radio.AvailableClients)
-                            r.AvailableClients = discovered_radio.AvailableClients;
-
-                        if (r.MaxPanadapters != discovered_radio.MaxPanadapters)
-                            r.MaxPanadapters = discovered_radio.MaxPanadapters;
-
-                        if (r.AvailablePanadapters != discovered_radio.AvailablePanadapters)
-                            r.AvailablePanadapters = discovered_radio.AvailablePanadapters;
-
-                        if (r.MaxSlices != discovered_radio.MaxSlices)
-                            r.MaxSlices = discovered_radio.MaxSlices;
-
-                        if (r.AvailableSlices != discovered_radio.AvailableSlices)
-                            r.AvailableSlices = discovered_radio.AvailableSlices;
-
-                        r.UpdateGuiClientsList(newGuiClients: discovered_radio.GuiClients);
-
-                        //Debug.WriteLine("Skipping Radio -- already in list: "+radio.ToString());
-                        return;
-                    }
-                }
-
-                Debug.WriteLine("Discovered " + discovered_radio.ToString());
-                LogDiscovery("6 API::Discovery_RadioDiscovered(" + discovered_radio.ToString() + ") - Add radio to list");
-
-                radio_list.Add(discovered_radio);
-                bool b = _radioDictionaryBySerial.TryAdd(discovered_radio.Serial, discovered_radio);
-            }
-
-            if (!_radio_list_timed.ContainsKey(discovered_radio.Serial))
-                _radio_list_timed.TryAdd(discovered_radio.Serial, Stopwatch.StartNew());
-            
-            OnRadioAddedEventHandler(discovered_radio);
-            //Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + ": Adding Radio: " + discovered_radio.ToString());
-        }
-
-        private static void WanServer_WanRadioRadioListRecieved(List<Radio> radios)
-        {
-            OnWanListReceivedEventHandler(radios);
-        }
-
-        public delegate void WanListReceivedEventHandler(List<Radio> radios);
-        /// <summary>
-        /// This event fires when a new radio on the network has been detected
-        /// </summary>
-        public static event WanListReceivedEventHandler WanListReceived;
-
-        public static void OnWanListReceivedEventHandler(List<Radio> radios)
-        {
-            LogDiscovery("8 API::OnWanListReceivedEventHandler(" + radios.ToString() + ")");
-
-            // filter out WAN radios with filter.txt, recently removed radios
-            for (int i = 0; i < radios.Count; i++)
-            {
-                Radio radio = radios[i];
-
-                if (filter_serial.Count > 0)
-                {
-                    bool found = false;
-                    foreach (string s in filter_serial)
-                    {
-                        if (radio.Serial.Contains(s))
-                        {
-                            found = true;
-                            //Debug.WriteLine("Found radio that matches filter: " + radio.Serial);
-                            break;
-                        }
-                    }
-
-                    if (!found)
-                    {
-                        radios.RemoveAt(i);
-                        i--;
-                        continue;
-                    }
-                }
-
-                if (_radio_list_recently_removed.ContainsKey(radio.Serial)) // ignore any recently removed radios
-                {
-                    radios.RemoveAt(i);
-                    i--;
-                }
-            }
-
-            if (WanListReceived != null)
-                WanListReceived(radios);
-        }
-
-        public delegate void RadioAddedEventHandler(Radio radio);
-        /// <summary>
-        /// This event fires when a new radio on the network has been detected
-        /// </summary>
-        public static event RadioAddedEventHandler RadioAdded;
-
-        public static void OnRadioAddedEventHandler(Radio radio)
-        {
-            LogDiscovery("7 API::OnRadioAddedEventHandler("+radio.ToString()+ ")");
-            if (RadioAdded != null)
-                RadioAdded(radio);
-        }
-
-        public delegate void RadioRemovedEventHandler(Radio radio);
-        public static event RadioRemovedEventHandler RadioRemoved;
-
-        public static void OnRadioRemovedEventHandler(Radio radio)
-        {
-            LogDiscovery("8 API::OnRadioRemovedEventHandler(" + radio.ToString() + ")");
-            if(RadioRemoved != null)
-                RadioRemoved(radio);
-        }
-
-        internal static bool RemoveRadio(Radio radio)
-        {
-            //Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + ": API RemoveRadio");
-            LogDiscovery("9 API::RemoveRadio(" + radio.ToString() + ")");
-            if (radio.Updating) return false; // don't remove the radio if we're just updating
-                        
-            lock (radio_list)
-            {
-                // if the radio isn't the list, we're done here
-                if (!radio_list.Contains(radio)) return false;
-
-                radio_list.Remove(radio);
-                Radio removed_radio;
-                bool b = _radioDictionaryBySerial.TryRemove(radio.Serial, out removed_radio);
-            }
-
-            if (_radio_list_timed.ContainsKey(radio.Serial))
-            {
-                _radio_list_timed.TryRemove(radio.Serial, out var watch);
-                if(watch != null) watch.Stop();
-            }
-
-            _radio_list_recently_removed.TryAdd(radio.Serial, Stopwatch.StartNew());
-
-            OnRadioRemovedEventHandler(radio);
-
-            // disconnect the radio object
-            if (radio.Connected)
-                radio.Disconnect();
-
-            return true;
-        }
-
-        private static void LogDiscovery(string msg)
-        {
-            if(!_logDiscovery) return;
-
-            string log_data_path_name = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "FlexRadio Systems", "LogFiles", "SSDR_Discovery.log");
-
-            try
-            {
-                TextWriter writer = new StreamWriter(log_data_path_name, true);
-                string app_name = System.AppDomain.CurrentDomain.FriendlyName;
-                string timestamp = DateTime.Now.ToShortDateString() + "  " + DateTime.Now.ToString("HH:mm:ss");
-                writer.WriteLine(timestamp + " " + app_name + ": "+ msg);
-                writer.Close();
-            }
-            catch (Exception)
-            {
-
-            }
-        }
-
-        internal static void LogDisconnect(string msg)
-        {
-            if (!_logDisconnect) return;
-
-            string log_data_path_name = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "FlexRadio Systems", "LogFiles", "SSDR_Disconnect.log");
-
-            try
-            {
-                TextWriter writer = new StreamWriter(log_data_path_name, true);
-                string app_name = System.AppDomain.CurrentDomain.FriendlyName;
-                string timestamp = DateTime.Now.ToShortDateString() + "  " + DateTime.Now.ToString("HH:mm:ss");
-                writer.WriteLine(timestamp + " " + app_name + ": " + msg);
-                writer.Close();
-            }
-            catch (Exception)
-            {
-
-            }
-        }
+        LogToFile(DisconnectLogPathName, msg);
     }
 }

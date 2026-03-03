@@ -185,11 +185,8 @@ namespace Flex.Smoothlake.FlexLib
                     _opusRXList.Add(timestamp_key, packet);
                 }
             }
-            else
-            {
-                // Old data we no longer care about
-                Debug.Write("o");
-            }
+            // else { TODO (SMART-11689) Clean up old data. }
+
             //normal case -- this is the next packet we are looking for, or it is the first one
             if (packet_count == (last_packet_count + 1) % 16 || last_packet_count == NOT_INITIALIZED)
             {

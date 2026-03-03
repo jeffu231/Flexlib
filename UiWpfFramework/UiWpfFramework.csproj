@@ -5,9 +5,8 @@
 				<AssemblyName>Flex.UiWpfFramework</AssemblyName>
 				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 				<ProductVersion>8.0.30703</ProductVersion>
-				<AssemblyVersion>3.8.19</AssemblyVersion>
 				<PackageId>Flex.UiWpfFramework</PackageId>
-				<Version>3.8.19</Version>
+				<Version>4.1.5</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
 				<LangVersion>latest</LangVersion>
@@ -16,11 +15,11 @@
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
-				<TargetFramework>netstandard2.0</TargetFramework>
+				<TargetFramework>net8.0</TargetFramework>
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
-				<TargetFrameworks>net462;net48;netstandard2.0</TargetFrameworks>
+				<TargetFrameworks>net462;net8.0-windows</TargetFrameworks>
 				<UseWPF>true</UseWPF>
 				<UseWindowsForms>true</UseWindowsForms>
 		</PropertyGroup>
@@ -36,17 +35,18 @@
 				<DebugType>pdbonly</DebugType>
 				<Optimize>true</Optimize>
 		</PropertyGroup>
-
-
-
-		<ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
+	
+		<ItemGroup Condition=" '$(TargetFramework)' == 'net8.0' ">
 				<Compile Remove="Utils\ClientPersistence.cs"/>
 				<Compile Remove="Utils\IPAddressValidator.cs"/>
 				<Compile Remove="Utils\WindowPlacement.cs"/>
+				<Compile Remove="Utils\ContentBlocksToFlowDocument.cs"/>
 				<Compile Remove="Mvvm\IDialogService.cs"/>
 				<Compile Remove="Mvvm\DialogService.cs"/>
 				<Compile Remove="Mvvm\RelayCommand.cs"/>
 				<Compile Remove="Mvvm\SafeObservableCollection.cs"/>
+				<Compile Remove="Mvvm\OkBoxWithHelpLink.cs"/>
+				<Compile Remove="Mvvm\OkBoxWithHelpLink.xaml.cs"/>
 		</ItemGroup>
 
 		<ItemGroup>

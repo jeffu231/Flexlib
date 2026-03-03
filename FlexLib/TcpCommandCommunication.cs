@@ -20,6 +20,8 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
+using Flex.UiWpfFramework.Mvvm;
+
 
 namespace Flex.Smoothlake.FlexLib
 {
@@ -193,7 +195,14 @@ namespace Flex.Smoothlake.FlexLib
                         _tcpReadStringBuffer = _tcpReadStringBuffer.Substring(eom + 1);
 
                         // fire the event that signals new data is ready
-                        OnDataReceivedReady(s);
+                        try // ensure that any exceptions are caught so we don't have silent failures that kill this socket
+                        {
+                            OnDataReceivedReady(s);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine("Exception while processing TCP Data: " + s);
+                        }
                     }
                 }
 

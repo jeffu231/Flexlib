@@ -12,31 +12,28 @@
 // ****************************************************************************
 
 //#define TIMING
-
+using Flex.Smoothlake.Vita;
+using Flex.UiWpfFramework.Mvvm;
+using Flex.UiWpfFramework.Utils;
+using Flex.Util;
 using System;
 using System.Collections;   // for Hashtable class
 using System.Collections.Concurrent;
-using System.Collections.Immutable;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel; // for ObservableCollection
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization; // for NumberStyles.HexNumber
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading;     // for AutoResetEvent
-using System.Windows;       // for Size
-using Flex.Smoothlake.Vita;
-using Flex.UiWpfFramework.Mvvm;
-using Flex.Util;
-using Ionic.Zip;
 using System.Threading.Tasks;
-using System.ComponentModel;
 using System.Timers;
-using Flex.UiWpfFramework.Utils;
 
 namespace Flex.Smoothlake.FlexLib
 {
@@ -81,7 +78,8 @@ namespace Flex.Smoothlake.FlexLib
         SW, // SmartSDR, CAT, etc
         Mic,
         ACC,
-        RCA
+        RCA,
+        TUNE,
     }
 
     /// <summary>
@@ -99,7 +97,8 @@ namespace Flex.Smoothlake.FlexLib
         PA_RANGE,
         CLIENT_TX_INHIBIT,
         XVTR_RX_ONLY,
-        NO_TX_ASSIGNED
+        NO_TX_ASSIGNED,
+        TGXL,
     }
 
     /// <summary>
@@ -138,7 +137,10 @@ namespace Flex.Smoothlake.FlexLib
         FailBypass,
         Fail,
         Aborted,
-        ManualBypass
+        ManualBypass,
+        TGXL_InProgress,
+        TGXL_OK,
+        TGXL_Aborted
     }
 
     public enum NetworkQuality
@@ -162,9 +164,31 @@ namespace Flex.Smoothlake.FlexLib
         gpsdo,
         [Description("TCXO")]
         tcxo
-    }    
+    }
 
     #endregion
+
+    public class SmartSdrCommandErrorException : Exception
+    {
+        public uint responseValue;
+
+        public SmartSdrCommandErrorException()
+        {
+        }
+
+        public SmartSdrCommandErrorException(string message) : base(message)
+        {
+        }
+
+        public SmartSdrCommandErrorException(string message, Exception inner) : base(message, inner)
+        {
+        }
+
+        public SmartSdrCommandErrorException(string message, uint responseValue) : this(message)
+        {
+            this.responseValue = responseValue;
+        }
+    }
 
     public delegate void ReplyHandler(int seq, uint resp_val, string s);
     public partial class Radio : ObservableObject
@@ -358,6 +382,27 @@ namespace Flex.Smoothlake.FlexLib
             get { return _aleComposite; }
         }
 
+        private APD _apd;
+        public APD APD
+        {
+            get => _apd;
+        }
+
+        private DVK _dvk;
+        public DVK DVK => _dvk;
+
+        private FeatureLicense _featureLicense;
+        public FeatureLicense FeatureLicense
+        {
+            get => _featureLicense;
+        }
+
+        private HAAPI _haapi;
+        public HAAPI HAAPI
+        {
+            get => _haapi;
+        }
+
         private string[] _logLevels;
         public string[] LogLevels
         {
@@ -443,56 +488,42 @@ namespace Flex.Smoothlake.FlexLib
         private ulong _version;
         public ulong Version
         {
-            get { return _version; }
+            get => _version;
             set
             {
-                if (_version != value)
+                if (_version == value)
+                    return;
+
+                // NOTE: this gets called when a Discovery packet is found and the resulting Radio object is created
+                _version = value;
+                RaisePropertyChanged(nameof(Version));
+
+                // figure out whether the system has the smoothlake_dev file in the right place
+                if (Radio.SmoothlakeDevFileExists())
                 {
-                    // NOTE: this gets called when a Discovery packet is found and the resulting Radio object is created
-                    _version = value;
-                    RaisePropertyChanged("Version");
-
-                    // figure out whether the system has the smoothlake_dev file in the right place
-                    bool dev_file_exists = false;
-                    // make sure that an access exception when trying to get information about this file doesn't take down
-                    // the whole application
-                    try
+                    // yes, assume the developer knows what they are doing and will ensure
+                    // the right version of firmware is running on the radio
+                    _updateRequired = false;
+                }
+                else
+                {
+                    // no, does the firmware version match exactly what we are looking for?
+                    if (_version != _req_version)
                     {
-                        string dev_file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) , "FlexRadio Systems", "smoothlake_dev");
-                        dev_file_exists = File.Exists(dev_file);
-                    }
-                    catch (Exception)
-                    {
-                        // do nothing, just assume the file doesn't exist
-                    }
-
-                    // was the file there?
-                    if (dev_file_exists)
-                    {
-                        // yes, assume the developer knows what they are doing and will ensure
-                        // the right version of firmware is running on the radio
-                        _updateRequired = false;
+                        // no -- prompt to run the update process
+                        _updateRequired = true;
                     }
                     else
                     {
-                        // no, does the firmware version match exactly what we are looking for?
-                        if (_version != _req_version)
-                        {
-                            // no -- prompt to run the update process
-                            _updateRequired = true;
-                        }
-                        else
-                        {
-                            // yes -- we're good to connect
-                            _updateRequired = false;
-                        }
+                        // yes -- we're good to connect
+                        _updateRequired = false;
                     }
-
-                    // avoid unnecessary updates during Discovery where setting the Version 
-                    // before the Status can cause confusing/annoying debug output
-                    if (_status != null) 
-                        UpdateConnectedState();
                 }
+
+                // avoid unnecessary updates during Discovery where setting the Version 
+                // before the Status can cause confusing/annoying debug output
+                if (_status != null)
+                    UpdateConnectedState();
             }
         }
 
@@ -530,14 +561,14 @@ namespace Flex.Smoothlake.FlexLib
         private ulong _discoveryProtocolVersion;
         public ulong DiscoveryProtocolVersion
         {
-            get { return _discoveryProtocolVersion; }
+            get => _discoveryProtocolVersion;
             set
             {
-                if (_discoveryProtocolVersion != value)
-                {
-                    _discoveryProtocolVersion = value;
-                    RaisePropertyChanged("DiscoveryProtocolVersion");
-                }
+                if (_discoveryProtocolVersion == value)
+                    return;
+
+                _discoveryProtocolVersion = value;
+                RaisePropertyChanged(nameof(DiscoveryProtocolVersion));
             }
         }
 
@@ -595,8 +626,12 @@ namespace Flex.Smoothlake.FlexLib
                 }
             }
         }
-        
-        public bool IsBigBend => ModelInfo.ModelTable[Model].Platform == RadioPlatform.BigBend;
+
+        public bool IsBigBend => ModelInfo.GetModelInfoForModel(Model).Platform == RadioPlatform.BigBend;
+
+        public bool IsOverlord => ModelInfo.GetModelInfoForModel(Model).HasOverlordPa;
+
+        public bool IsTxAmpModel => ModelInfo.GetModelInfoForModel(Model).HasTxAmplifier;
 
         private string _serial;
         /// <summary>
@@ -604,14 +639,14 @@ namespace Flex.Smoothlake.FlexLib
         /// </summary>
         public string Serial
         {
-            get { return _serial; }
+            get => _serial;
             internal set
             {
-                if (_serial != value)
-                {
-                    _serial = value;
-                    RaisePropertyChanged("Serial");
-                }
+                if (_serial == value)
+                    return;
+
+                _serial = value;
+                RaisePropertyChanged(nameof(Serial));
             }
         }
 
@@ -847,14 +882,14 @@ namespace Flex.Smoothlake.FlexLib
         /// </summary>
         public IPAddress IP
         {
-            get { return _ip; }
+            get => _ip;
             internal set
             {
-                if (_ip != value)
-                {
-                    _ip = value;
-                    RaisePropertyChanged("IP");
-                }
+                if ((value == null && _ip == null) || (_ip != null && value != null && _ip.Equals(value)))
+                    return;
+
+                _ip = value;
+                RaisePropertyChanged(nameof(IP));
             }
         }
 
@@ -891,31 +926,42 @@ namespace Flex.Smoothlake.FlexLib
         private string _guiClientIPs;
         public string GuiClientIPs
         {
-            get { return _guiClientIPs; }
-            set { _guiClientIPs = value;
-                RaisePropertyChanged("GuiClientIPs");
+            get => _guiClientIPs;
+            set
+            {
+                if (_guiClientIPs == value)
+                    return;
+
+                _guiClientIPs = value;
+                RaisePropertyChanged(nameof(GuiClientIPs));
             }
         }
 
         private string _guiClientHosts;
         public string GuiClientHosts
         {
-            get { return _guiClientHosts; }
+            get => _guiClientHosts;
             set
             {
+                if (_guiClientHosts == null)
+                    return;
+
                 _guiClientHosts = value;
-                RaisePropertyChanged("GuiClientHosts");
+                RaisePropertyChanged(nameof(GuiClientHosts));
             }
         }
 
         private string _guiClientStations;
         public string GuiClientStations
         {
-            get { return _guiClientStations; }
+            get => _guiClientStations;
             set
             {
+                if (_guiClientStations == value)
+                    return;
+
                 _guiClientStations = value;
-                RaisePropertyChanged("GuiClientStations");
+                RaisePropertyChanged(nameof(GuiClientStations));
             }
         }
 
@@ -1155,18 +1201,32 @@ namespace Flex.Smoothlake.FlexLib
             }
         }
 
+        private bool _externalPortLink;
+        public bool ExternalPortLink
+        {
+            get => _externalPortLink;
+            set
+            {
+                if (_externalPortLink == value)
+                    return;
+
+                _externalPortLink = value;
+                RaisePropertyChanged(nameof(ExternalPortLink));
+            }
+        }
+
         private string _status;
         public string Status
         {
-            get { return _status; }
+            get => _status;
             set
             {
-                if (_status != value)
-                {
-                    _status = value;
-                    UpdateConnectedState();
-                    RaisePropertyChanged("Status");
-                }
+                if (_status == value)
+                    return;
+
+                _status = value;
+                UpdateConnectedState();
+                RaisePropertyChanged(nameof(Status));
             }
         }
 
@@ -1286,6 +1346,21 @@ namespace Flex.Smoothlake.FlexLib
             }
         }
 
+        private bool _profileAutoSave;
+        public bool ProfileAutoSave
+        {
+            get => _profileAutoSave;
+            set
+            {
+                if (_profileAutoSave == value)
+                    return;
+
+                _profileAutoSave = value;
+                SendCommand($"profile autosave {(_profileAutoSave ? "on" : "off")}");
+                RaisePropertyChanged("ProfileAutoSave");
+            }
+        }
+
         private bool _txRawIQEnabled = false;
         public bool TXRawIQEnabled
         {
@@ -1295,19 +1370,28 @@ namespace Flex.Smoothlake.FlexLib
         private int _backlight;
         /// <summary>
         /// The front panel Flexradio Logo backlight brightness
-        /// for 6400 and 6600 radios from a value 0-100
+        /// for radio models with a backlit front panel
         /// </summary>
         public int Backlight
         {
             get { return _backlight; }
             set
             {
-                if (_backlight != value)
+                if (_backlight == value) { return; }
+                
+                _backlight = value;
+
+                if (ModelInfo.GetModelInfoForModel(Model).HasOverlordPa)
                 {
-                    _backlight = value;
-                    SendCommand("radio backlight " + _backlight);
-                    RaisePropertyChanged("Backlight");
+                    SendCommand($"led_display set bright={_backlight}");
                 }
+                else
+                {
+                    SendCommand($"radio backlight {_backlight}");
+                }
+
+                RaisePropertyChanged(nameof(Backlight));
+                
             }
         }
 
@@ -1648,6 +1732,10 @@ namespace Flex.Smoothlake.FlexLib
             _ale3G = new ALE3G(this);
             _ale4G = new ALE4G(this);
             _aleComposite = new ALEComposite(this);
+            _apd = new APD(this);
+            _dvk = new DVK(this);
+            _featureLicense = new FeatureLicense(this);
+            _haapi = new HAAPI(this);
 
             IsWan = isWan;
 
@@ -1770,6 +1858,7 @@ namespace Flex.Smoothlake.FlexLib
         private AutoResetEvent WaitForIpResponseFromRadioARE = new AutoResetEvent(false);
 
         private object _connectSyncObj = new Object();
+        public object ConnectSyncObj { get => _connectSyncObj; }
 
         /// <summary>
         /// Creates a TCP client and connects to the radio
@@ -1875,6 +1964,7 @@ namespace Flex.Smoothlake.FlexLib
             SendCommand("sub memories all");
             SendCommand("sub daxiq all");
             SendCommand("sub dax all");
+            SendCommand("sub license all");
             SendCommand("sub usb_cable all");
             if (_isTNFSubscribed)
                 SendCommand("sub tnf all");
@@ -1884,6 +1974,10 @@ namespace Flex.Smoothlake.FlexLib
             SendCommand("sub log_manager");
             SendCommand("sub radio all");
             SendCommand("sub codec all");
+            SendCommand("sub apd all");
+            SendCommand("sub dvk all");
+            SendCommand("sub ha_api amplifier");
+            SendCommand("sub ha_api fault");
 
             // ensure that packets are manually fragmented to avoid network issues
             SendRadioMTUCommand(_mtu);
@@ -1974,6 +2068,11 @@ namespace Flex.Smoothlake.FlexLib
             OnRefreshLicenseStateCompleted();
         }
 
+        private void LicenseRefreshConnectedReplyHandler(int seq, uint resp_val, string reply)
+        {
+            OnRefreshLicenseStateCompleted();
+        }
+
         /// <summary>
         /// Closes the TCP client and disconnects the radio
         /// </summary>
@@ -2054,6 +2153,8 @@ namespace Flex.Smoothlake.FlexLib
 
             API.RemoveRadio(this);
 
+            APD.Exit();
+
             if (_updating)
                 _commandCommunication.IsConnectedChanged += _commandCommunication_IsConnectedChanged;
         }
@@ -2106,7 +2207,8 @@ namespace Flex.Smoothlake.FlexLib
             }
             else
             {
-                SendCommand("license refresh");
+                // Radio is already connected. License refresh button is pressed within the radio menu on Maestro or radio setup on ssdr-win
+                SendReplyCommand(new ReplyHandler(LicenseRefreshConnectedReplyHandler), "license refresh");
             }
         }
 
@@ -2352,7 +2454,6 @@ namespace Flex.Smoothlake.FlexLib
                             meterUpdateDictionary.Add(id, packet.GetMeterValue(i));
                         else
                             meterUpdateDictionary[id] = packet.GetMeterValue(i);
-
                     }
                 }
 
@@ -2514,6 +2615,20 @@ namespace Flex.Smoothlake.FlexLib
 
             //Debug.WriteLine("ParseReply: " + seq + ": " + s);
 
+            // If this sequence number is in the trace response list, add response string to trace output.
+            lock (TelnetTraceResponseSeqNums)
+            {
+                if (TelnetTraceResponseSeqNums.Contains(seq))
+                {
+                    lock (TelnetTraceResponseSeqNums) lock (TelnetTraceOutput)
+                        {
+                            TelnetTraceOutput.Add(s);
+                            RaisePropertyChanged(nameof(TelnetTraceOutput));
+                            TelnetTraceResponseSeqNums.Remove(seq);
+                        }
+                }
+            }
+
             ReplyHandler handler = null;
 
             // is there an entry in the reply table looking for this reply
@@ -2567,20 +2682,76 @@ namespace Flex.Smoothlake.FlexLib
 
             string[] words = tokens[1].Split(' ');
 
+            // If this status matches a topic we are tracing, keep a copy of the status for the trace viewer.
+            lock (SelectedTelnetTraceTopics)
+            {
+                if (SelectedTelnetTraceTopics.Count != 0 && SelectedTelnetTraceTopics.Contains(words[0]))
+                {
+                    lock (TelnetTraceOutput)
+                    {
+                        TelnetTraceOutput.Add(s);
+                    }
+                    RaisePropertyChanged(nameof(TelnetTraceOutput));
+                }
+            }
+
             switch (words[0])
             {
                 case "ale":
                     if (words[1] == "2g")
-                        _ale2G.ParseStatus(tokens[1].Substring("ale 2g ".Length));
+                    {
+                        if (words.Length > 2 && words[2] == "pair")
+                        {
+                            _aleComposite.Parse2GStationPairing(tokens[1].Substring("ale 2g pair ".Length));
+                        }
+                        else
+                        {
+                            _ale2G.ParseStatus(tokens[1].Substring("ale 2g ".Length));
+                        }
+                    }
                     else if (words[1] == "3g")
-                        _ale3G.ParseStatus(tokens[1].Substring("ale 3g ".Length));
+                    {
+                        if (words.Length > 2 && words[2] == "pair")
+                        {
+                            _aleComposite.Parse3GStationPairing(tokens[1].Substring("ale 3g pair ".Length));
+                        }
+                        else
+                        {
+                            _ale3G.ParseStatus(tokens[1].Substring("ale 3g ".Length));
+                        }
+                    }
                     else if (words[1] == "4g")
-                        _ale4G.ParseStatus(tokens[1].Substring("ale 4g ".Length));
+                    {
+                        if (words.Length > 2 && words[2] == "pair")
+                        {
+                            _aleComposite.Parse4GStationPairing(tokens[1].Substring("ale 4g pair ".Length));
+                        }
+                        else
+                        {
+                            _ale4G.ParseStatus(tokens[1].Substring("ale 4g ".Length));
+                        }
+                    }
                     else
+                    {
                         _aleComposite.ParseStatus(tokens[1].Substring("ale ".Length));
+                    }
                     break;
+                case "ale_station_group":
+                    {
+                        _aleComposite.ParseStationGroupStatus(tokens[1].Substring("ale_station_group ".Length));
+                        break;
+                    }
+                case "ale_multipoint":
+                    {
+                        _aleComposite.ParseMultipointStatus(tokens[1].Substring("ale_multipoint ".Length));
+                        break;
+                    }
                 case "amplifier":
                     ParseAmplifierStatus(tokens[1].Substring("amplifier ".Length)); // remove the "amplifier "
+                    break;
+
+                case "apd":
+                    APD.ParseStatus(tokens[1].Substring("apd ".Length));
                     break;
 
                 case "atu":
@@ -2735,8 +2906,16 @@ namespace Flex.Smoothlake.FlexLib
                     }
                     break;
 
+                case "ha_api":
+                    HAAPI.ParseStatus(tokens[1].Substring("ha_api ".Length)); // "ha_api "
+                    break;
+
                 case "interlock":
                     ParseInterlockStatus(tokens[1].Substring("interlock ".Length)); // "interlock "
+                    break;
+
+                case "license":
+                    FeatureLicense.ParseLicenseStatus(tokens[1].Substring("license ".Length)); // "license "
                     break;
 
                 case "log":
@@ -3060,6 +3239,10 @@ namespace Flex.Smoothlake.FlexLib
                     }
                     break;
 
+                case "dvk":
+                    _dvk.ParseStatus(tokens[1].Substring("dvk ".Length));
+                    break;
+
                 case "waveform":
                     {
                         ParseWaveformStatus(tokens[1].Substring("waveform ".Length));
@@ -3271,6 +3454,10 @@ namespace Flex.Smoothlake.FlexLib
                 //radio oscillator state=%s setting=%s locked=%d ext_present=%d gpsdo_present=%d tcxo_present=%d"
                 ParseOscillatorStatus(s.Substring("oscillator ".Length));
             }
+            else if (s.StartsWith("xmas_tree"))
+            {
+                ChristmasTreeMode = !ChristmasTreeMode;
+            }
             else
             {
 
@@ -3279,7 +3466,7 @@ namespace Flex.Smoothlake.FlexLib
                     string[] tokens = kv.Split('=');
                     if (tokens.Length != 2)
                     {
-                        Debug.WriteLine("Radio::ParseRadioStatus: Invalid key/value pair (" + kv + ")");
+                        if (!string.IsNullOrEmpty(kv)) Debug.WriteLine($"Radio::ParseRadioStatus: Invalid key/value pair ({kv})");
                         continue;
                     }
 
@@ -3443,6 +3630,17 @@ namespace Flex.Smoothlake.FlexLib
                                 RaisePropertyChanged("LineoutMute");
                             }
                             break;
+
+                        case "external_pa_allowed":
+                            {
+                                if (!byte.TryParse(value, out var temp))
+                                {
+                                    Debug.WriteLine("Radio::ParseRadioStatus - external_pa_allowed: Invalid value (" + kv + ")");
+                                    continue;
+                                }
+                                ExternalPaAllowed = Convert.ToBoolean(temp);
+                                break;
+                            }
 
                         case "nickname":
                             {
@@ -3664,6 +3862,19 @@ namespace Flex.Smoothlake.FlexLib
                                 RaisePropertyChanged("MultiFlexEnabled");
                             }
                             break;
+                        case "auto_save":
+                            {
+                                // "radio auto_save=1|0"
+                                if (false == byte.TryParse(value, out var temp))
+                                {
+                                    Debug.WriteLine($"Radio::ParseRadioStatus - auto_save: Invalid value ({kv})");
+                                    continue;
+                                }
+
+                                _profileAutoSave = Convert.ToBoolean(temp);
+                                RaisePropertyChanged("ProfileAutoSave");
+                            }
+                            break;
                     }
                 }
             }
@@ -3815,7 +4026,7 @@ namespace Flex.Smoothlake.FlexLib
         /// </summary>
         public event MessageReceivedEventHandler MessageReceived;
 
-        private void OnMessageReceived(MessageSeverity severity, string msg)
+        public void OnMessageReceived(MessageSeverity severity, string msg)
         {
             if (MessageReceived != null)
                 MessageReceived(severity, msg);
@@ -3860,19 +4071,29 @@ namespace Flex.Smoothlake.FlexLib
 
         internal int SendCommand(int seq_num, string s)
         {
-            if (!_commandCommunication.IsConnected)
+            if (_commandCommunication is null || !_commandCommunication.IsConnected)
             {
                 // TODO: handle disconnect
                 return 0;
             }
 
-            //Debug.WriteLine("SendCommand: " + seq_num + ": " + s);
-
-            /*if (!connected)
+            // If this topic is to be traced, keep a copy of the command for tracing, and store the sequence number so the response can be traced.
+            lock (SelectedTelnetTraceTopics)
             {
-                bool b = Connect();
-                if (!b) return 0;
-            }*/
+                if (SelectedTelnetTraceTopics.Count != 0)
+                {
+                    string topic = s.Substring(0, s.IndexOf(' '));
+                    if (s is not null && SelectedTelnetTraceTopics.Contains(topic))
+                    {
+                        lock (TelnetTraceResponseSeqNums) lock (TelnetTraceOutput)
+                            {
+                                TelnetTraceOutput.Add(s);
+                                TelnetTraceResponseSeqNums.Add(seq_num);
+                            }
+                        RaisePropertyChanged(nameof(TelnetTraceOutput));
+                    }
+                }
+            }
 
             string msg_type = "C";
             if (Verbose) msg_type = "CD";
@@ -3920,9 +4141,29 @@ namespace Flex.Smoothlake.FlexLib
             return SendCommand(seq_num, s);
         }
 
-        internal int SendReplyCommand(ReplyHandler handler, string s)
+        public int SendReplyCommand(ReplyHandler handler, string s)
         {
             return SendReplyCommand(GetNextSeqNum(), handler, s);
+        }
+
+        public Task<string> SendCommandAsync(string message)
+        {
+            var tcs = new TaskCompletionSource<string>();
+
+            SendReplyCommand(CommandCompleted, message);
+
+            return tcs.Task;
+
+            void CommandCompleted(int sequence, uint responseValue, string info)
+            {
+                if (responseValue != 0)
+                {
+                    tcs.TrySetException(new SmartSdrCommandErrorException(info, responseValue));
+                    return;
+                }
+
+                tcs.TrySetResult(info);
+            }
         }
 
         #endregion
@@ -4193,6 +4434,9 @@ namespace Flex.Smoothlake.FlexLib
 
         private void AddSpot(Spot spot)
         {
+            if (String.IsNullOrEmpty(spot.Callsign))    // drop a spot w/o a callsign on the floor,
+                return;                                 // it's useless and causes a null pointer exception
+
             lock (_spots)
             {
                 if (_spots.Contains(spot)) return;
@@ -4511,6 +4755,8 @@ namespace Flex.Smoothlake.FlexLib
                     cable = new UsbBcdCable(this, serialNumber, "bcd");
                 else if (s.Contains("type=ldpa"))
                     cable = new UsbLdpaCable(this, serialNumber);
+                else if (s.Contains("type=passthrough"))
+                    cable = new UsbPassthroughCable(this, serialNumber);
                 else if (s.Contains("type=invalid"))
                     cable = new UsbOtherCable(this, serialNumber, UsbCableType.Invalid);
             }
@@ -4523,31 +4769,6 @@ namespace Flex.Smoothlake.FlexLib
             if (cable_added)
             {
                 AddUsbCable(cable);
-            }
-        }
-
-        public void AddCableOfType(string value, string serialNumber)
-        {
-            switch (value)
-            {
-                case "cat":
-                    AddUsbCable(new UsbCatCable(this, serialNumber));
-                    break;
-                case "bcd":
-                    AddUsbCable(new UsbBcdCable(this, serialNumber, "bcd"));
-                    break;
-                case "vbcd":
-                    AddUsbCable(new UsbBcdCable(this, serialNumber, "vbcd"));
-                    break;
-                case "bcd_vbcd":
-                    AddUsbCable(new UsbBcdCable(this, serialNumber, "bcd_vbcd"));
-                    break;
-                case "bit":
-                    AddUsbCable(new UsbBitCable(this, serialNumber));
-                    break;
-                case "invalid":
-                    AddUsbCable(new UsbOtherCable(this, serialNumber, UsbCableType.Invalid));
-                    break;
             }
         }
 
@@ -4713,7 +4934,6 @@ namespace Flex.Smoothlake.FlexLib
             {
                 if (_slices.Contains(slc)) return;
                 _slices.Add(slc);
-                //OnSliceAdded(slc); -- this is now done in the Slice class to ensure that good status info is present before notifying the client
             }
 
             RaisePropertyChanged("SliceList");
@@ -5891,11 +6111,9 @@ namespace Flex.Smoothlake.FlexLib
                         break;
                     case "low":
                         {
-                            double low;
-                            b = StringHelper.TryParseDouble(value, out low);
-                            if (!b)
+                            if (!StringHelper.TryParseDouble(value, out double low))
                             {
-                                Debug.WriteLine("Error in Meter List Reply: Invalid Low (" + value + ")");
+                                Debug.WriteLine($"Error in Meter List Reply: Invalid Low ({value})");
                                 continue;
                             }
 
@@ -5905,11 +6123,9 @@ namespace Flex.Smoothlake.FlexLib
                         break;
                     case "hi":
                         {
-                            double high;
-                            b = StringHelper.TryParseDouble(value, out high);
-                            if (!b)
+                            if (!StringHelper.TryParseDouble(value, out double high))
                             {
-                                Debug.WriteLine("Error in Meter List Reply: Invalid High (" + value + ")");
+                                Debug.WriteLine($"Error in Meter List Reply: Invalid High ({value})");
                                 continue;
                             }
 
@@ -6085,7 +6301,7 @@ namespace Flex.Smoothlake.FlexLib
                 return _meters.FindAll(x => (x.Source.ToUpper() == Meter.SOURCE_AMPLIFIER &&
                     $"0x{x.SourceIndex:X8}" == tuner.Handle)).ToImmutableList();
         }
-        
+
         private void AddMeter(Meter m)
         {
             lock (_meters)
@@ -6114,6 +6330,8 @@ namespace Flex.Smoothlake.FlexLib
                 m.DataReady += new Meter.DataReadyEventHandler(HWAlc_DataReady);
             else if (m.Name == "+13.8A") // A: before the fuse
                 m.DataReady += new Meter.DataReadyEventHandler(Volts_DataReady);
+            else if (m.Name == "PAEFF")
+                m.DataReady += new Meter.DataReadyEventHandler(PAEff_DataReady);
             //Enhancement over original libary
             else if (m.Name == "MAINFAN") 
                 m.DataReady += new Meter.DataReadyEventHandler(MainFan_DataReady);
@@ -6145,6 +6363,8 @@ namespace Flex.Smoothlake.FlexLib
                         m.DataReady -= HWAlc_DataReady;
                     else if (m.Name == "+13.8A") // A: Before the fuse
                         m.DataReady -= Volts_DataReady;
+                    else if (m.Name == "PAEFF")
+                        m.DataReady -= PAEff_DataReady;
                     else if (m.Name == "MAINFAN") 
                         m.DataReady -= MainFan_DataReady;
                 }
@@ -6195,12 +6415,17 @@ namespace Flex.Smoothlake.FlexLib
         {
             OnVoltsDataReady(data);
         }
-        
+
+        void PAEff_DataReady(Meter meter, float data)
+        {
+            OnPAEffDataReady(data);
+        }
+
         /// <summary>
         /// The delegate event handler for meter data events.
         /// Used with the events: ForwardPowerDataReady, ReflectedPowerDataReady,
         /// SWRDataReady, PATempDataReady, VoltsDataReady, MicDataReady, MicPeakDataReady,
-        /// CompPeakDataReady, HWAlcDataReady, etc.
+        /// CompPeakDataReady, HWAlcDataReady, PAEffDataReady, etc.
         /// </summary>
         /// <param name="data">The forward RF power meter value</param>
         public delegate void MeterDataReadyEventHandler(float data);
@@ -6300,7 +6525,18 @@ namespace Flex.Smoothlake.FlexLib
             if (HWAlcDataReady != null)
                 HWAlcDataReady(data);
         }
-        
+
+        /// <summary>
+        /// This event is raised when there is new meter data for the PA
+        /// Efficiency.  Data units are in degrees dBm.
+        /// </summary>
+        public event MeterDataReadyEventHandler PAEffDataReady;
+        private void OnPAEffDataReady(float data)
+        {
+            if (PAEffDataReady != null)
+                PAEffDataReady(data);
+        }
+
         #endregion
 
         #region Version Routines
@@ -6479,6 +6715,11 @@ namespace Flex.Smoothlake.FlexLib
                         }
                         break;
 
+                    case "1750_tone_burst":
+                        if (Int32.TryParse(value, out var toneBurst))
+                            TX1750ToneBurst = toneBurst == 1 ? true : false;
+                        break;
+
                     case "screensaver":
                         {
                             ScreensaverMode mode = ParseScreensaverMode(value);
@@ -6504,6 +6745,19 @@ namespace Flex.Smoothlake.FlexLib
                             RaisePropertyChanged("SubnetMask");
                         }
                         break;
+
+                    case "diversity_allowed":
+                        {
+                            if (!byte.TryParse(value, out byte temp))
+                            {
+                                Debug.WriteLine($"Radio::UpdateInfo - '{kv}' is not a valid key/value pair");
+                                continue;
+                            }
+                            Debug.WriteLine("Setting diversity_allowed to " + temp);
+                            _diversityIsAllowed = Convert.ToBoolean(temp);
+                            RaisePropertyChanged(nameof(DiversityIsAllowed));
+                            break;
+                        }
                 }
             }
         }
@@ -6563,7 +6817,7 @@ namespace Flex.Smoothlake.FlexLib
         /// </summary>
         public string Callsign
         {
-            get { return _callsign; }
+            get => _callsign;
             set
             {
                 string new_value = StringHelper.Sanitize(value.ToUpper());
@@ -6572,11 +6826,11 @@ namespace Flex.Smoothlake.FlexLib
                 {
                     _callsign = new_value;
                     SendCommand("radio callsign " + _callsign);
-                    RaisePropertyChanged("Callsign");
+                    RaisePropertyChanged(nameof(Callsign));
                 }
                 else if (new_value != value)
                 {
-                    RaisePropertyChanged("Callsign");
+                    RaisePropertyChanged(nameof(Callsign));
                 }
             }
         }
@@ -6598,11 +6852,11 @@ namespace Flex.Smoothlake.FlexLib
                 {
                     _nickname = new_value;
                     SendCommand("radio name " + _nickname);
-                    RaisePropertyChanged("Nickname");
+                    RaisePropertyChanged(nameof(Nickname));
                 }
                 else if (new_value != value)
                 {
-                    RaisePropertyChanged("Nickname");
+                    RaisePropertyChanged(nameof(Nickname));
                 }
             }
         }
@@ -7034,10 +7288,11 @@ namespace Flex.Smoothlake.FlexLib
                 case "BAD_MODE": reason = InterlockReason.BAD_MODE; break;
                 case "TUNED_TOO_FAR": reason = InterlockReason.TUNED_TOO_FAR; break;
                 case "OUT_OF_BAND": reason = InterlockReason.OUT_OF_BAND; break;
-                case "PA_RANGE": reason = InterlockReason.PA_RANGE; break;
+                case "OUT_OF_PA_RANGE": reason = InterlockReason.PA_RANGE; break;
                 case "CLIENT_TX_INHIBIT": reason = InterlockReason.CLIENT_TX_INHIBIT; break;
                 case "XVTR_RX_ONLY": reason = InterlockReason.XVTR_RX_ONLY; break;
                 case "NO_TX_ASSIGNED": reason = InterlockReason.NO_TX_ASSIGNED; break;
+                case "AMP:TG": reason = InterlockReason.TGXL; break;
             }
 
             return reason;
@@ -7065,6 +7320,13 @@ namespace Flex.Smoothlake.FlexLib
         private ATUTuneStatus ParseATUTuneStatus(string s)
         {
             ATUTuneStatus status = ATUTuneStatus.None;
+            // Check if external tuner is connected and valid. If it is, set TGXL status based on whether or not it is tuning.
+            if (radioShouldUseExtTuner)
+            {
+                status = ActiveTuner.IsTuning ? ATUTuneStatus.TGXL_InProgress : ATUTuneStatus.TGXL_OK;
+                return status;
+            }
+
             switch (s)
             {
                 case "NONE": status = ATUTuneStatus.None; break;
@@ -7092,8 +7354,8 @@ namespace Flex.Smoothlake.FlexLib
                 case "MIC": source = PTTSource.Mic; break;
                 case "ACC": source = PTTSource.ACC; break;
                 case "RCA": source = PTTSource.RCA; break;
+                case "TUNE": source = PTTSource.TUNE; break;
             }
-
             return source;
         }
 
@@ -7129,7 +7391,7 @@ namespace Flex.Smoothlake.FlexLib
                 string[] tokens = kv.Split('=');
                 if (tokens.Length != 2)
                 {
-                    Debug.WriteLine("Radio::ParseInterlockStatus: Invalid key/value pair (" + kv + ")");
+                    if (!string.IsNullOrEmpty(kv)) Debug.WriteLine($"Radio::ParseInterlockStatus: Invalid key/value pair ({kv})");
                     continue;
                 }
 
@@ -7433,7 +7695,7 @@ namespace Flex.Smoothlake.FlexLib
 
         private int _maxPowerLevel;
         /// <summary>
-        /// The maximum power level (in Watts) that the radio will transmit when using the PA
+        /// The maximum power level (on relative scale 0-100, non-linear) that the radio will transmit when using the PA
         /// </summary>
         public int MaxPowerLevel
         {
@@ -7610,6 +7872,13 @@ namespace Flex.Smoothlake.FlexLib
             }
         }
 
+        /// <summary>
+        /// Send the profile autosave command to turn autosave on or off
+        /// </summary>
+        public void AutoSaveProfile(string state)
+        {
+            SendCommand($"profile autosave \"{state}\"");
+        }
 
         public void SaveGlobalProfile(string profile_name)
         {
@@ -8359,12 +8628,31 @@ namespace Flex.Smoothlake.FlexLib
             get { return _txTune; }
             set
             {
-                if (_txTune != value)
-                {
-                    _txTune = value;
-                    SendCommand("transmit tune " + Convert.ToByte(_txTune));
-                    RaisePropertyChanged("TXTune");
-                }
+                if (value == _txTune) return;
+                _txTune = value;
+                SendCommand("transmit tune " + Convert.ToByte(_txTune));
+                RaisePropertyChanged(nameof(TXTune));
+            }
+        }
+
+        private string _tuneMode;
+        /// <summary>
+        /// Sets the tuneMode
+        /// </summary>
+        public string TuneMode
+        {
+            get => _tuneMode;
+            set
+            {
+                if (value == _tuneMode) return;
+                _tuneMode = value;
+
+                var command = _tuneMode.Equals("Two Tone", StringComparison.OrdinalIgnoreCase)
+                    ? "transmit set tune_mode=two_tone"
+                    : "transmit set tune_mode=single_tone";
+
+                SendCommand(command);
+                RaisePropertyChanged(nameof(TuneMode));
             }
         }
 
@@ -9141,6 +9429,34 @@ namespace Flex.Smoothlake.FlexLib
             }
         }
 
+        private bool _unsavedProfileChangesTX;
+        public bool UnsavedProfileChangesTX
+        {
+            get => _unsavedProfileChangesTX;
+            set
+            {
+                if (_unsavedProfileChangesTX == value)
+                    return;
+
+                _unsavedProfileChangesTX = value;
+                RaisePropertyChanged("UnsavedProfileChangesTX");
+            }
+        }
+
+        private bool _unsavedProfileChangesMIC;
+        public bool UnsavedProfileChangesMIC
+        {
+            get => _unsavedProfileChangesMIC;
+            set
+            {
+                if (_unsavedProfileChangesMIC == value)
+                    return;
+
+                _unsavedProfileChangesMIC = value;
+                RaisePropertyChanged("UnsavedProfileChangesMIC");
+            }
+        }
+
         private void ParseTransmitStatus(string s)
         {
             string[] words = s.Split(' ');
@@ -9161,7 +9477,7 @@ namespace Flex.Smoothlake.FlexLib
                 string[] tokens = kv.Split('=');
                 if (tokens.Length != 2)
                 {
-                    Debug.WriteLine("Radio::ParseTransmitStatus: Invalid key/value pair (" + kv + ")");
+                    if (!string.IsNullOrEmpty(kv)) Debug.WriteLine($"Radio::ParseTransmitStatus: Invalid key/value pair ({kv})");
                     continue;
                 }
 
@@ -9184,6 +9500,17 @@ namespace Flex.Smoothlake.FlexLib
                             if (temp > 100) temp = 100;
                             _maxPowerLevel = temp;
                             RaisePropertyChanged("MaxPowerLevel");
+                            break;
+                        }
+                    case "max_internal_pa_power":
+                        {
+                            if (!int.TryParse(value, out var temp))
+                            {
+                                Debug.WriteLine("Radio::ParseTransmitStatus - max_internal_pa_power: Invalid value (" + kv + ")");
+                                continue;
+                            }
+
+                            MaxInternalPaPowerWatts = temp;
                             break;
                         }
                     case "rfpower":
@@ -9861,6 +10188,27 @@ namespace Flex.Smoothlake.FlexLib
                             }
                             break;
                         }
+                    case "tune_mode":
+                        {
+                            string parsedValue = value?.Trim().ToLowerInvariant();
+
+                            switch (parsedValue)
+                            {
+                                case "two_tone":
+                                    _tuneMode = "Two Tone";
+                                    break;
+                                case "single_tone":
+                                    _tuneMode = "Single Tone";
+                                    break;
+                                default:
+                                    Debug.WriteLine($"Radio::ParseRadioStatus - tune_mode: Unknown value ({value})");
+                                    _tuneMode = "Single Tone"; // default fallback
+                                    break;
+                            }
+
+                            RaisePropertyChanged("TuneMode");
+                            break;
+                        }
                     case "met_in_rx":
                         {
                             byte temp;
@@ -9990,11 +10338,22 @@ namespace Flex.Smoothlake.FlexLib
         /// <summary>
         /// Returns true if Diversity is allowed on the radio model.
         /// </summary>
+        ///
+        private bool? _diversityIsAllowed = null;
         public bool DiversityIsAllowed
         {
             get
             {
                 bool ret_val = false;
+
+                // Model info response ought to set diversity support directly.
+                if (_diversityIsAllowed.HasValue)
+                {
+                    return _diversityIsAllowed.Value;
+                }
+
+                // Fallback for older radio software which does not support
+                // reporting "diversity_allowed" in the info response.
                 switch (_model)
                 {
                     case "FLEX-6600":
@@ -10003,6 +10362,8 @@ namespace Flex.Smoothlake.FlexLib
                     case "FLEX-6700R":
                     case "FLEX-8600":
                     case "FLEX-8600M":
+                    case "AU-520":
+                    case "AU-520M":
                         ret_val = true;
                         break;
                 }
@@ -10047,10 +10408,20 @@ namespace Flex.Smoothlake.FlexLib
             get { return _atuMemoriesEnabled; }
             set
             {
-                if (_atuMemoriesEnabled == value)
-                    return;
+                bool newAtuMemoriesEnabled = radioShouldUseExtTuner ? false : value;
 
-                _atuMemoriesEnabled = value;
+                if (_atuMemoriesEnabled == newAtuMemoriesEnabled)
+                {
+                    if (value != newAtuMemoriesEnabled)
+                    {
+                        // Overriding value, notify the viewmodel so that it doesn't think everything worked
+                        RaisePropertyChanged("ATUMemoriesEnabled");
+                    }
+
+                    return;
+                }
+
+                _atuMemoriesEnabled = newAtuMemoriesEnabled;
                 SendCommand("atu set memories_enabled=" + Convert.ToByte(_atuMemoriesEnabled));
                 RaisePropertyChanged("ATUMemoriesEnabled");
             }
@@ -10126,14 +10497,7 @@ namespace Flex.Smoothlake.FlexLib
                 {
                     case "status":
                         {
-                            ATUTuneStatus status = ParseATUTuneStatus(value);
-                            if (status == ATUTuneStatus.None)
-                            {
-                                Debug.WriteLine("Radio::ParseATUStatus: Error - Invalid status (" + value + ")");
-                                continue;
-                            }
-
-                            ATUTuneStatus = status;
+                            ATUTuneStatus = ParseATUTuneStatus(value);
                             break;
                         }
 
@@ -10239,6 +10603,7 @@ namespace Flex.Smoothlake.FlexLib
         {
             string[] words = s.Split(' ');
 
+            Debug.WriteLine($"Radio::ParseWanStatus - new status {s}");
             foreach (string kv in words)
             {
                 string[] tokens = kv.Split('=');
@@ -10344,6 +10709,40 @@ namespace Flex.Smoothlake.FlexLib
                         }
 
                         DatabaseExportComplete = !Convert.ToBoolean(is_exporting);
+                        break;
+                    }
+                case "unsaved_changes_tx":
+                    {
+                        if (false == byte.TryParse(value, out var temp))
+                        {
+                            Debug.WriteLine($"Radio::ParseProfilesStatus - auto_save_unsaved_changes_tx: Invalid value (({kv})");
+                        }
+
+                        bool old_val = _unsavedProfileChangesTX;
+                        bool new_val = Convert.ToBoolean(temp);
+
+                        if (new_val == old_val)
+                            return;
+
+                        _unsavedProfileChangesTX = new_val;
+                        RaisePropertyChanged("UnsavedProfileChangesTX");
+                        break;
+                    }
+                case "unsaved_changes_mic":
+                    {
+                        if (false == byte.TryParse(value, out var temp))
+                        {
+                            Debug.WriteLine($"Radio::ParseProfilesStatus - auto_save_unsaved_changes_mic: Invalid value (({kv})");
+                        }
+
+                        bool old_val = _unsavedProfileChangesMIC;
+                        bool new_val = Convert.ToBoolean(temp);
+
+                        if (new_val == old_val)
+                            return;
+
+                        _unsavedProfileChangesMIC = new_val;
+                        RaisePropertyChanged("UnsavedProfileChangesMIC");
                         break;
                     }
             }
@@ -10826,7 +11225,7 @@ namespace Flex.Smoothlake.FlexLib
             set
             {
                 // only allow this to be called on M models
-                if (!ModelInfo.ModelTable[_model].IsMModel) 
+                if (!ModelInfo.GetModelInfoForModel(_model).IsMModel)
                     return;
 
                 if (_frontSpeakerMute != value)
@@ -10838,6 +11237,30 @@ namespace Flex.Smoothlake.FlexLib
             }
         }
 
+        private int _maxInternalPaPowerWatts = 100; // Default to 100W, unless otherwise specified by platform.
+        public int MaxInternalPaPowerWatts
+        {
+            get => _maxInternalPaPowerWatts;
+            set
+            {
+                if (value == _maxInternalPaPowerWatts) return;
+                _maxInternalPaPowerWatts = value;
+                TransmitSlice.MaxInternalPaPowerWatts = value;
+                RaisePropertyChanged(nameof(MaxInternalPaPowerWatts));
+            }
+        }
+
+        private bool _externalPaAllowed = true; // Default to true, unless otherwise specified by platform.
+        public bool ExternalPaAllowed
+        {
+            get => _externalPaAllowed;
+            set
+            {
+                if (value == _externalPaAllowed) return;
+                _externalPaAllowed = value;
+                RaisePropertyChanged(nameof(ExternalPaAllowed));
+            }
+        }
 
 
         #endregion
@@ -11089,11 +11512,16 @@ namespace Flex.Smoothlake.FlexLib
                     memories_file = $"{path_list[1]}\\SSDR_Memories_{timestamp_string}_v{version}.csv";
                     using (FileStream memories_stream = File.Create(memories_file))
                     {
-                        using (ZipFile zip = ZipFile.Read(config_file))
+                        using (ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(config_file))
                         {
-                            ZipEntry entry = zip["memories.csv"];
+                            ZipArchiveEntry entry = zip.GetEntry("memories.csv");
                             if (entry != null)
-                                entry.Extract(memories_stream);
+                            {
+                                using (Stream entryStream = entry.Open())
+                                {
+                                    entryStream.CopyTo(memories_stream);
+                                }
+                            }
                         }
 
                         memories_stream.Close();
@@ -11984,9 +12412,12 @@ namespace Flex.Smoothlake.FlexLib
         private bool _updating;
         internal bool Updating
         {
-            get { return _updating; }
+            get => _updating;
             set
             {
+                if (_updating == value)
+                    return;
+
                 _updating = value;
                 UpdateConnectedState();
             }
@@ -12048,6 +12479,11 @@ namespace Flex.Smoothlake.FlexLib
                 }
             }
         }
+
+        /// <summary>
+        /// Indicates whether 1750Hz Tone Burst is available
+        /// </summary>
+        public bool TX1750ToneBurst { get; private set; }
 
         /// <summary>
         /// For internal use only.
@@ -12416,7 +12852,7 @@ namespace Flex.Smoothlake.FlexLib
         #endregion
 
         #region Xvtr Routines
-        
+
         /// <summary>
         /// Create a new XVTR object
         /// </summary>
@@ -12885,6 +13321,12 @@ namespace Flex.Smoothlake.FlexLib
                 TunerAdded(tuner);
         }
 
+        public bool radioShouldUseExtTuner => ActiveTuner != null &&
+                                              ActiveTuner.IsOperate &&
+                                              !string.IsNullOrEmpty(TransmitSlice?.TXAnt) &&
+                                              ((TransmitSlice?.TXAnt == ActiveTuner.PortAAnt) ||
+                                              (TransmitSlice?.TXAnt == ActiveTuner.PortBAnt));
+
         #endregion
 
         #region Amplifier Routines
@@ -12892,17 +13334,6 @@ namespace Flex.Smoothlake.FlexLib
         private void ParseAmplifierStatus(string s)
         {
             if (string.IsNullOrEmpty(s)) return;
-
-            // since the TGXL is using the amp API, we are going to catch that fact here for now.
-            // At some point, we will likely want to migrate this to an accessory API (or tuner API?)
-            // that is more appropriate so we don't have tuners looking like amplifiers in the radio.
-
-            // check for whether this is actually a Tuner
-            if (s.Contains("model=TunerGeniusXL"))
-            {
-                ParseTunerStatus(s);
-                return;
-            }
 
             string[] words = s.Split(' ');
 
@@ -12913,13 +13344,26 @@ namespace Flex.Smoothlake.FlexLib
             }
 
             string handle = words[0];
+
+            // since the TGXL is using the amp API, we are going to catch that fact here for now.
+            // At some point, we will likely want to migrate this to an accessory API (or tuner API?)
+            // that is more appropriate so we don't have tuners looking like amplifiers in the radio.
+
+            Tuner tuner = FindTunerByHandle(handle);
+            // check for whether this is actually a Tuner
+            if (tuner != null || s.Contains("model=TunerGeniusXL"))
+            {
+                ParseTunerStatus(s);
+                return;
+            }
+
             Amplifier amp = FindAmplifierByHandle(handle);
 
             bool add_amp = false;
 
             // is this an amplifier we already knew about?
             if (amp == null)
-            {                
+            {
                 // no -- is it being removed?
                 if (s.Contains("removed"))
                 {
@@ -13011,7 +13455,7 @@ namespace Flex.Smoothlake.FlexLib
         {
             if (AmplifierRemoved != null)
                 AmplifierRemoved(amp);
-        }        
+        }
 
         /// <summary>
         /// Delegate event handler for the AmplifierAdded event
@@ -13111,7 +13555,7 @@ namespace Flex.Smoothlake.FlexLib
                                     break;
                             }
                         }
- 
+
 
                         GUIClient gui_client = FindGUIClientByClientHandle(handle_uint);
                         if (gui_client != null)
@@ -13225,7 +13669,7 @@ namespace Flex.Smoothlake.FlexLib
             lock (GuiClientsLockObj)
             {
                 GuiClients.ToImmutableList().ForEach(x =>
-                {   
+                {
                     GuiClients.Remove(x);
                     OnGUIClientRemoved(x);
                 });
@@ -13352,22 +13796,22 @@ namespace Flex.Smoothlake.FlexLib
                         matchingExistingGuiClient.ClientHandle = newGuiClient.ClientHandle;
                     }
                 }
-            }            
+            }
 
             // Remove: Check that all GUIClients in the existing list are also present in the new list-- if any are not in the new list,
             // they must be removed from the existing list
             lock (GuiClientsLockObj)
             {
-                for (int i = GuiClients.Count-1; i >= 0; i--)
+                for (int i = GuiClients.Count - 1; i >= 0; i--)
                 {
                     GUIClient existingGuiClient = GuiClients[i];
                     bool existingClientDoesNotExistInNewList = !newGuiClients.Any(x => x.ClientHandle == existingGuiClient.ClientHandle);
 
-                    if(existingClientDoesNotExistInNewList)
+                    if (existingClientDoesNotExistInNewList)
                     {
                         GuiClients.Remove(existingGuiClient);
                         OnGUIClientRemoved(existingGuiClient);
-                    }                    
+                    }
                 }
             }
 
@@ -13376,7 +13820,7 @@ namespace Flex.Smoothlake.FlexLib
 
         internal void UpdateGuiClientListTXSlices()
         {
-            lock(GuiClientsLockObj)
+            lock (GuiClientsLockObj)
             {
                 foreach (GUIClient client in _guiClients)
                 {
@@ -13474,6 +13918,74 @@ namespace Flex.Smoothlake.FlexLib
 
         #endregion
 
+        #region Tracing
+
+        public void AddTelnetTraceTopic(string topic)
+        {
+            lock (SelectedTelnetTraceTopics)
+            {
+                if (SelectedTelnetTraceTopics.Contains(topic)) return;
+                SelectedTelnetTraceTopics.Add(topic);
+            }
+        }
+
+        public void RemoveTelnetTraceTopic(string topic)
+        {
+            lock (SelectedTelnetTraceTopics)
+            {
+                SelectedTelnetTraceTopics.Remove(topic);
+            }
+        }
+
+        public void ClearTelnetTraceOutput()
+        {
+            lock (TelnetTraceOutput)
+            {
+                TelnetTraceOutput = [];
+            }
+            RaisePropertyChanged(nameof(TelnetTraceOutput));
+        }
+
+        private List<string> _selectedTelnetTraceTopics = [];
+        public List<string> SelectedTelnetTraceTopics
+        {
+            get => _selectedTelnetTraceTopics;
+            set
+            {
+                if (value == _selectedTelnetTraceTopics) return;
+                _selectedTelnetTraceTopics = value;
+                RaisePropertyChanged(nameof(SelectedTelnetTraceTopics));
+            }
+        }
+
+        private ArrayList _telnetTraceResponseSeqNums = [];
+        public ArrayList TelnetTraceResponseSeqNums
+        {
+            get => _telnetTraceResponseSeqNums;
+            set
+            {
+                if (value == _telnetTraceResponseSeqNums) return;
+                _telnetTraceResponseSeqNums = value;
+                RaisePropertyChanged(nameof(TelnetTraceResponseSeqNums));
+            }
+        }
+
+        private List<string> _telnetTraceOutput = [];
+        public List<string> TelnetTraceOutput
+        {
+            get => _telnetTraceOutput;
+            set
+            {
+                if (value == _telnetTraceOutput) return;
+                _telnetTraceOutput = value;
+                RaisePropertyChanged(nameof(TelnetTraceOutput));
+            }
+        }
+
+        #endregion
+        
+        public const uint MinimumMajorVersionForMultiFlex = 3;
+
         private bool _multiFlexEnabled = true;
         public bool MultiFlexEnabled
         {
@@ -13486,6 +13998,18 @@ namespace Flex.Smoothlake.FlexLib
                     SendCommand("radio set mf_enable=" + Convert.ToByte(_multiFlexEnabled));
                     RaisePropertyChanged("MultiFlexEnabled");
                 }
+            }
+        }
+
+        private bool _christmasTreeMode = false;
+        public bool ChristmasTreeMode
+        {
+            get => _christmasTreeMode;
+            set
+            {
+                if (value == _christmasTreeMode) return;
+                _christmasTreeMode = value;
+                RaisePropertyChanged(nameof(ChristmasTreeMode));
             }
         }
 
@@ -13515,12 +14039,12 @@ namespace Flex.Smoothlake.FlexLib
                 }
             }
         }
-        
+
         public bool GetTXFreq(out double freq_mhz)
         {
             freq_mhz = 0.0;
 
-            lock(_slices)
+            lock (_slices)
             {
                 // are there any slices?
                 if (_slices.Count == 0) return false;
@@ -13540,6 +14064,21 @@ namespace Flex.Smoothlake.FlexLib
             return false;
         }
 
+        public static bool SmoothlakeDevFileExists()
+        {
+            try
+            {
+                string path = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                path += "\\FlexRadio Systems\\smoothlake_dev";
+                return File.Exists(path);
+            }
+            catch (Exception)
+            {
+                // Don't do anything if we couldn't search for the SL_DEV file.
+            }
+            return false;
+        }
+
         /// <summary>
         /// Overridden ToString() method for the Radio.cs class
         /// </summary>
@@ -13547,9 +14086,9 @@ namespace Flex.Smoothlake.FlexLib
         public override string ToString()
         {
             // to enable easy binding to ListBoxes, etc
-            return _ip.ToString() + " " + _model + ": " + _serial + " ("+_nickname +" 0x" + _unique_id.ToString("X").PadLeft(8, '0') + ") fpc_mac:"+_frontPanelMacAddress;
+            return _ip.ToString() + " " + _model + ": " + _serial + " (" + _nickname + " 0x" + _unique_id.ToString("X").PadLeft(8, '0') + ") fpc_mac:" + _frontPanelMacAddress;
         }
-        
+
         #region UDP VITASocket
 
         public VitaSocket VitaSock = null;
@@ -13568,160 +14107,152 @@ namespace Flex.Smoothlake.FlexLib
         private string _radioLicenseId;
         public string RadioLicenseId
         {
-            get
-            {
-                return _radioLicenseId;
-            }
+            get => _radioLicenseId;
             set
             {
-                if (_radioLicenseId != value)
-                {
-                    _radioLicenseId = value;
-                    RaisePropertyChanged("RadioLicenseId");
-                }
+                if (_radioLicenseId == value)
+                    return;
+
+                _radioLicenseId = value;
+                RaisePropertyChanged(nameof(RadioLicenseId));
             }
         }
 
         private string _maxLicensedVersion = "v1"; // may say "All" or "Any" in factory mode
         public string MaxLicensedVersion
         {
-            get
-            {
-                return _maxLicensedVersion;
-            }
+            get => _maxLicensedVersion;
             set
             {
-                if (_maxLicensedVersion != value)
-                {
-                    _maxLicensedVersion = value;
-                    RaisePropertyChanged("MaxLicensedVersion");
-                }
+                if (_maxLicensedVersion == value) 
+                    return;
+                
+                _maxLicensedVersion = value;
+                RaisePropertyChanged(nameof(MaxLicensedVersion));
             }
         }
 
         private int _licensedClients = 0;
         public int LicensedClients
         {
-            get { return _licensedClients; }
+            get => _licensedClients;
             set
             {
-                if (_licensedClients != value)
-                {
-                    _licensedClients = value;
-                    RaisePropertyChanged("LicensedClients");
-                }
+                if (_licensedClients == value)
+                    return;
+
+                _licensedClients = value;
+                RaisePropertyChanged(nameof(LicensedClients));
             }
         }
 
         private int _availableClients = 0;
         public int AvailableClients
         {
-            get { return _availableClients; }
+            get => _availableClients;
             set
             {
-                if (_availableClients != value)
-                {
-                    _availableClients = value;
-                    RaisePropertyChanged("AvailableClients");
-                }
+                if (_availableClients == value)
+                    return;
+
+                _availableClients = value;
+                RaisePropertyChanged(nameof(AvailableClients));
             }
         }
 
         private int _maxPanadapters = 0;
         public int MaxPanadapters
         {
-            get { return _maxPanadapters; }
+            get => _maxPanadapters;
             set
             {
-                if (_maxPanadapters != value)
-                {
-                    _maxPanadapters = value;
-                    RaisePropertyChanged("MaxPanadapters");
-                }
+                if (_maxPanadapters == value)
+                    return;
+
+                _maxPanadapters = value;
+                RaisePropertyChanged(nameof(MaxPanadapters));
             }
         }
 
         private int _availablePanadapters = 0;
         public int AvailablePanadapters
         {
-            get { return _availablePanadapters; }
+            get => _availablePanadapters;
             set
             {
-                if (_availablePanadapters != value)
-                {
-                    _availablePanadapters = value;
-                    RaisePropertyChanged("AvailablePanadapters");                    
-                }
+                if (_availablePanadapters == value)
+                    return;
+
+                _availablePanadapters = value;
+                RaisePropertyChanged(nameof(AvailablePanadapters));
             }
         }
 
         private int _availableSlices = 0;
         public int AvailableSlices
         {
-            get { return _availableSlices; }
+            get => _availableSlices;
             set
             {
-                if (_availableSlices != value)
-                {
-                    _availableSlices = value;
-                    RaisePropertyChanged("AvailableSlices");
-                }
+                if (_availableSlices == value)
+                    return;
+
+                _availableSlices = value;
+                RaisePropertyChanged(nameof(AvailableSlices));
             }
         }
 
         private int _maxSlices = 0;
         public int MaxSlices
         {
-            get { return _maxSlices; }
+            get => _maxSlices;
             set
             {
-                if (_maxSlices != value)
-                {
-                    _maxSlices = value;
-                    RaisePropertyChanged("MaxSlices");
-                }
+                if (_maxSlices == value)
+                    return;
+
+                _maxSlices = value;
+                RaisePropertyChanged(nameof(MaxSlices));
             }
         }
 
         private bool _isInternetConnected;
         public bool IsInternetConnected
         {
-            get { return _isInternetConnected; }
+            get => _isInternetConnected;
             set
             {
-                if (_isInternetConnected != value)
-                {
-                    _isInternetConnected = value;
-                    RaisePropertyChanged("IsInternetConnected");
-                }
+                if (_isInternetConnected == value)
+                    return;
+
+                _isInternetConnected = value;
+                RaisePropertyChanged(nameof(IsInternetConnected));
             }
         }
 
-        private bool _requiresAdditionalLicense = false;
-        public bool RequiresAdditionalLicense
+        private bool _hasUnknownRadioLicense;
+        public bool HasUnknownRadioLicense
         {
-            get { return _requiresAdditionalLicense; }
+            get => _hasUnknownRadioLicense;
             set
             {
-                if (_requiresAdditionalLicense != value)
-                {
-                    _requiresAdditionalLicense = value;
-                    RaisePropertyChanged("RequiresAdditionalLicense");
-                }
+                if (_hasUnknownRadioLicense == value) return;
+                _hasUnknownRadioLicense = value;
+                RaisePropertyChanged(nameof(HasUnknownRadioLicense));
             }
         }
 
         private string _frontPanelMacAddress;
         public string FrontPanelMacAddress
         {
-            get { return _frontPanelMacAddress; }
+            get => _frontPanelMacAddress;
             internal set
             {
-                if (_frontPanelMacAddress != value)
-                {
-                    _frontPanelMacAddress = value;
-                    RaisePropertyChanged("FrontPanelMacAddress");
-                }
+                if (_frontPanelMacAddress == value)
+                    return;
+
+                _frontPanelMacAddress = value;
+                RaisePropertyChanged(nameof(FrontPanelMacAddress));
             }
         }
 
@@ -13802,7 +14333,7 @@ namespace Flex.Smoothlake.FlexLib
         private AutoResetEvent _semNewUDPPacket = new AutoResetEvent(false);
         private void ProcessUDPPackets_ThreadFunction()
         {
-            while ( Connected )
+            while (Connected)
             {
                 UDPVitaPacket packet;
                 bool try_dequeue_result = false;
@@ -13853,7 +14384,7 @@ namespace Flex.Smoothlake.FlexLib
             _semNewUDPPacket.Set();
 
             // Wait for thread to finish
-            if(_udpProcessingThread != null)
+            if (_udpProcessingThread != null)
                 _udpProcessingThread.Join();
 
             _udpSuccessfulRegistration = false;
@@ -13875,7 +14406,7 @@ namespace Flex.Smoothlake.FlexLib
 
                 PersistenceLoaded = true;
 
-                while ( VitaSock != null && Connected )
+                while (VitaSock != null && Connected)
                 {
                     /* We must maintain the NAT rule in the local router
                      * so we have to send traffic every once in a while 
@@ -13891,7 +14422,7 @@ namespace Flex.Smoothlake.FlexLib
             }
         }
 
-        private void StartUDP( )
+        private void StartUDP()
         {
             if (IsWan)
             {
@@ -13922,5 +14453,6 @@ namespace Flex.Smoothlake.FlexLib
         }
 
         #endregion
+
     }
 }

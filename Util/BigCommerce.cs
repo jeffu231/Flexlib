@@ -36,24 +36,28 @@ namespace Util
     {
         private const string STORE_API_URL = "https://www.flexradio.com/wp-json/bc/v3";
         private const string UPGRADE_SKU = "SSDRV3";
+        private const string SMARTSDRPLUS_SKU = "SSDRPLUS";
+        private const string SMARTSDREA_SKU = "SSDREA";
         private const string RADIO_ID_MODIFIER = "Radio ID";
 
         private static BigCommerce? _singleton;
+        private static string _singletonSku;
         private RestClient _client = new(STORE_API_URL);
 
-        private BigCommerce()
+        private BigCommerce(string sku = SMARTSDRPLUS_SKU)
         {
-            UpgradeProductId = new AsyncLazy<int>(async () => await GetProductIdForSku(UPGRADE_SKU));
+            _singletonSku = sku;
+            UpgradeProductId = new AsyncLazy<int>(async () => await GetProductIdForSku(sku));
             RadioIdModifier = new AsyncLazy<int>(async () =>
                 await GetProductModifierByDisplayName(await UpgradeProductId, RADIO_ID_MODIFIER));
         }
 
-        public static BigCommerce GetClient()
+        public static BigCommerce GetClient(string product_sku)
         {
-            if (_singleton != null)
+            if (_singleton is not null && (_singletonSku == product_sku))
                 return _singleton;
 
-            _singleton = new BigCommerce();
+            _singleton = new BigCommerce(product_sku);
 
             return _singleton;
         }

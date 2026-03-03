@@ -1,8 +1,8 @@
-# SmartSDR v3.x API (Flexlib) 
+# SmartSDR v4.x API (Flexlib) 
 
-The latest is based on version 3.8.19.
+The latest is based on version 4.1.5. Older versions are available as packages.
 
-This is a port of the Flexlib library that has been retargeted to support NET Core 8.0, .NET Framework 4.6.2 and .NET Framework 4.8.
+This is a port of the Flexlib library that has been retargeted to support NET Core 8.0 on non windows systems, .NET Framework 4.6.2 and .NET 8.0-windows on Windows systems.
 
 Portions of the UiWpfFramework project have been excluded from the Net Core 8 build since they are not cross-platform, but all radio API functions work.
 

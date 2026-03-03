@@ -4,10 +4,9 @@
 				<RootNamespace>Flex.Smoothlake.FlexLib</RootNamespace>
 				<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 				<ProductVersion>8.0.30703</ProductVersion>
-				<AssemblyVersion>3.8.19</AssemblyVersion>
 				<AssemblyName>FlexLib</AssemblyName>
 				<PackageId>FlexLib</PackageId>
-				<Version>3.8.19</Version>
+				<Version>4.1.5</Version>
 				<Authors>Flex Radio</Authors>
 				<Company>Flex Radio</Company>
 				<PackageDescription>Multiplatform version of the Flexlib code from flexradio.com</PackageDescription>
@@ -20,7 +19,7 @@
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
-				<TargetFrameworks>net462;net48;net8.0</TargetFrameworks>
+				<TargetFrameworks>net462;net8.0-windows</TargetFrameworks>
 		</PropertyGroup>
 
 		<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -34,20 +33,14 @@
 				<DebugType>pdbonly</DebugType>
 				<Optimize>true</Optimize>
 		</PropertyGroup>
-
-
-
+	
 		<ItemGroup>
 				<ProjectReference Include="..\UiWpfFramework\UiWpfFramework.csproj" />
 				<ProjectReference Include="..\Util\Util.csproj"/>
 				<ProjectReference Include="..\Vita\Vita.csproj"/>
 		</ItemGroup>
 		<ItemGroup>
-				<None Remove="Ionic.Zip" />
-		</ItemGroup>
-		<ItemGroup>
-				<Reference Include="Ionic.Zip">
-						<HintPath>Libs\Ionic.Zip.dll</HintPath>
-				</Reference>
+		  <PackageReference Include="AsyncAwaitBestPractices" Version="10.0.0" />
+		  <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		</ItemGroup>
 </Project>

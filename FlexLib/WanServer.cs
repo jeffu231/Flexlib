@@ -250,11 +250,14 @@ namespace Flex.Smoothlake.FlexLib
                 {
                     switch (maxLicensedVersion)
                     {
+                        // v1 and v2 are pre-multiFLEX
                         case "v1":
                         case "v2":
                             licensedClients = 1;
                             break;
+                        // v3 and onward shall assume multiFLEX in the absence of better information
                         case "v3":
+                        default:
                             licensedClients = 2;
                             break;                            
                     }
@@ -264,19 +267,16 @@ namespace Flex.Smoothlake.FlexLib
                 if (licensedClients == -1)
                     licensedClients = 1;
 
-                bool requiresAdditionalLicense = true;
-                string requiresAdditionalLicenseStr;
-                if (keyValuePairs.TryGetValue("requires_additional_license", out requiresAdditionalLicenseStr))
+                bool hasUnknownRadioLicense = false;
+                if (keyValuePairs.TryGetValue("license_is_unknown", out string hasUnknownRadioLicenseStr))
                 {
-                    uint temp;
-                    bool parse_success = uint.TryParse(requiresAdditionalLicenseStr, out temp);
-                    if (!parse_success || temp > 1)
+                    if (!uint.TryParse(hasUnknownRadioLicenseStr, out uint temp) || temp > 1)
                     {
-                        Debug.WriteLine("FlexLib::WanServer::ParseRadioListMessage: Invalid value (requires_additional_license=" + requiresAdditionalLicenseStr + ")");
+                        Debug.WriteLine($"FlexLib::WanServer::ParseRadioListMessage: Invalid value (license_is_unknown={hasUnknownRadioLicense})");
                     }
                     else
                     {
-                        requiresAdditionalLicense = Convert.ToBoolean(temp);
+                        hasUnknownRadioLicense = Convert.ToBoolean(temp);
                     }
                 }
 
@@ -342,6 +342,7 @@ namespace Flex.Smoothlake.FlexLib
                     GuiClientIPs = guiClientIPsCsv,
                     GuiClientHosts = guiClientHostsCsv,
                     GuiClientStations = guiClientStationsCsv,
+                    HasUnknownRadioLicense = hasUnknownRadioLicense,
                     InUseIP = guiClientIPsCsv,
                     InUseHost = guiClientHostsCsv,
                     PublicTlsPort = publicTlsPortToUse,
@@ -352,7 +353,6 @@ namespace Flex.Smoothlake.FlexLib
                     NegotiatedHolePunchPort = -1, // This is invalid until negotiated
                     MaxLicensedVersion = maxLicensedVersion,
                     LicensedClients = licensedClients,
-                    RequiresAdditionalLicense = requiresAdditionalLicense,
                     RadioLicenseId = radioLicenseId,
                     LowBandwidthConnect = false, // This is defaulted unless the connect is specified later 
                     GuiClients = guiClients

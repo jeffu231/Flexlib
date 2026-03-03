@@ -21,6 +21,7 @@ using Flex.UiWpfFramework.Mvvm;
 using System.Diagnostics;
 
 
+
 namespace Flex.Smoothlake.FlexLib
 {
     public enum TunerState
@@ -51,11 +52,9 @@ namespace Flex.Smoothlake.FlexLib
             get => _serialNumber;
             private set
             {
-                if (value != _serialNumber)
-                {
-                    _serialNumber = value;
-                    RaisePropertyChanged(nameof(SerialNumber));
-                }
+                if (_serialNumber == value) return;
+                _serialNumber = value;
+                RaisePropertyChanged(nameof(SerialNumber));
             }
         }
 
@@ -65,11 +64,9 @@ namespace Flex.Smoothlake.FlexLib
             get => _version;
             private set
             {
-                if (value != _version)
-                {
-                    _version = value;
-                    RaisePropertyChanged(nameof(Version));
-                }
+                if (_version == value) return;
+                _version = value;
+                RaisePropertyChanged(nameof(Version));
             }
         }
 
@@ -79,11 +76,9 @@ namespace Flex.Smoothlake.FlexLib
             get => _nickname;
             private set
             {
-                if (_nickname != value)
-                {
-                    _nickname = value;
-                    RaisePropertyChanged(nameof(Nickname));
-                }
+                if (_nickname == value) return;
+                _nickname = value;
+                RaisePropertyChanged(nameof(Nickname));
             }
         }
 
@@ -95,25 +90,33 @@ namespace Flex.Smoothlake.FlexLib
             get => _one_by_three;
             private set
             {
-                if (_one_by_three != value)
-                {
-                    _one_by_three = value;
-                    RaisePropertyChanged(nameof(OneByThree));
-                }
+                if (_one_by_three == value) return;
+                _one_by_three = value;
+                RaisePropertyChanged(nameof(OneByThree));
             }
         }
 
+        private bool _dhcp;
+        public bool Dhcp
+        {
+            get => _dhcp;
+            set
+            {
+                if (_dhcp == value) return;
+                _dhcp = value;
+                RaisePropertyChanged(nameof(Dhcp));
+            }
+        }
+            
         private IPAddress _ip;
-        public IPAddress IP 
+        public IPAddress IP
         {
             get => _ip;
             private set
             {
-                if (_ip != value)
-                {
-                    _ip = value;
-                    RaisePropertyChanged(nameof(IP));
-                }
+                if (_ip == value) return;
+                _ip = value;
+                RaisePropertyChanged(nameof(IP));
             }
         }
 
@@ -123,11 +126,9 @@ namespace Flex.Smoothlake.FlexLib
             get => _netmask;
             private set
             {
-                if (_netmask != value)
-                {
-                    _netmask = value;
-                    RaisePropertyChanged(nameof(Netmask));
-                }
+                if (_netmask == value) return;
+                _netmask = value;
+                RaisePropertyChanged(nameof(Netmask));
             }
         }
 
@@ -137,60 +138,69 @@ namespace Flex.Smoothlake.FlexLib
             get => _gateway;
             private set
             {
-                if (_gateway != value)
-                {
-                    _gateway = value;
-                    RaisePropertyChanged(nameof(Gateway));
-                }
+                if (_gateway == value) return;
+                _gateway = value;
+                RaisePropertyChanged(nameof(Gateway));
             }
         }
 
         public int Port { get; private set; }
 
         private string _ant;
-        public string Ant
+        private string Ant
         {
             get => _ant;
             set
             {
                 if (_ant == value) return;
-
                 _ant = value;
-                ParseAntennaSettings(_ant);
-                RaisePropertyChanged(nameof(Ant));
+                ParseAntenna(_ant);
             }
         }
 
-        private Dictionary<string, string> _antennaSettingsDict = new Dictionary<string, string>();
-        private void ParseAntennaSettings(string s)
+        private string _port_a_ant = "";
+        public string PortAAnt
         {
-            Dictionary<string, string> new_ant_settings_dict = new Dictionary<string, string>();
-
-            string[] ant_setting_pairs = s.Split(',');
-            foreach (string ant_setting_pair in ant_setting_pairs)
+            get => _port_a_ant;
+            set
             {
-                if (!ant_setting_pair.Contains(":")) continue;
-
-                string[] settings = ant_setting_pair.Split(':');
-
-                if (settings.Length != 2) continue;
-
-                new_ant_settings_dict.Add(settings[0], settings[1]);
+                if (_port_a_ant == value) return;
+                _port_a_ant = value;
+                RaisePropertyChanged(nameof(PortAAnt));
             }
-
-            _antennaSettingsDict = new_ant_settings_dict;
         }
 
-        /// <summary>
-        /// Returns the name of the output associated with the ant given the current configuration of the amplifier
-        /// </summary>
-        /// <param name="ant">The radio antenna port name</param>
-        /// <returns>The name of the output associated with the radio antenna port, or null if not configured for that port</returns>
-        public string OutputConfiguredForAntenna(string ant)
+        private string _port_b_ant = "";
+        public string PortBAnt
         {
-            if (_antennaSettingsDict == null || !_antennaSettingsDict.Keys.Contains(ant)) return null;
+            get => _port_b_ant;
+            set
+            {
+                if (_port_b_ant == value) return;
+                _port_b_ant = value;
+                RaisePropertyChanged(nameof(PortBAnt));
+            }
+        }
 
-            return _antennaSettingsDict[ant];
+        private void ParseAntenna(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return;
+
+            string[] port_ants = s.Split(',');
+            
+            // Handle unexpected results
+            if (port_ants.Length > 2)
+            {
+                // We will proceed as usual, but will ignore additional values beyond the first 2
+                Debug.WriteLine("Tuner::ParseAntenna: Unexpected format (" + s + ")");
+            }
+
+            PortAAnt = port_ants[0];
+
+            if (port_ants.Length > 1)
+                PortBAnt = port_ants[1];
+            else
+                PortBAnt = "";
         }
 
         private List<Meter> _meters = new List<Meter>();
@@ -215,7 +225,6 @@ namespace Flex.Smoothlake.FlexLib
             internal set
             {
                 if (_state == value) return;
-
                 _state = value;
                 RaisePropertyChanged(nameof(State));
             }
@@ -227,14 +236,12 @@ namespace Flex.Smoothlake.FlexLib
             get => _isOperate;
             set
             {
-                if (_isOperate != value)
-                {
-                    _isOperate = value;
-                    _radio.SendCommand("tgxl set handle=" + _handle + " mode=" + Convert.ToByte(_isOperate));
-                    RaisePropertyChanged(nameof(IsOperate));
+                if (_isOperate == value) return;
+                _isOperate = value;
+                _radio.SendCommand("tgxl set handle=" + _handle + " mode=" + Convert.ToByte(_isOperate));
+                RaisePropertyChanged(nameof(IsOperate));
 
-                    UpdateState();
-                }
+                UpdateState();
             }
         }
 
@@ -244,60 +251,98 @@ namespace Flex.Smoothlake.FlexLib
             get => _isBypass;
             set
             {
-                if (_isBypass != value)
-                {
-                    _isBypass = value;
-                    _radio.SendCommand("tgxl set handle=" + _handle + " bypass=" + Convert.ToByte(_isBypass));
-                    RaisePropertyChanged(nameof(IsBypass));
+                if (_isBypass == value) return;
+                _isBypass = value;
+                _radio.SendCommand("tgxl set handle=" + _handle + " bypass=" + Convert.ToByte(_isBypass));
+                RaisePropertyChanged(nameof(IsBypass));
 
-                    UpdateState();
-                }
+                UpdateState();
             }
         }
 
-        int _relayC1 = 0;
+        private bool _isTuning = false;
+        public bool IsTuning
+        {
+            get => _isTuning;
+            set
+            {
+                if (_isTuning == value) return;
+                _isTuning = value;
+                RaisePropertyChanged(nameof(IsTuning));
+            }
+        }
+
+        private int _relayC1 = 0;
         public int RelayC1
         {
             get => _relayC1;
             internal set
             {
                 if (_relayC1 == value) return;
-
                 _relayC1 = value;
                 RaisePropertyChanged(nameof(RelayC1));
             }
         }
 
-        int _relayC2 = 0;
+        private int _relayC2 = 0;
         public int RelayC2
         {
             get => _relayC2;
             internal set
             {
                 if (_relayC2 == value) return;
-
                 _relayC2 = value;
                 RaisePropertyChanged(nameof(RelayC2));
             }
         }
-        int _relayL = 0;
+
+        private int _relayL = 0;
         public int RelayL
         {
             get => _relayL;
             internal set
             {
                 if (_relayL == value) return;
-
                 _relayL = value;
                 RaisePropertyChanged(nameof(RelayL));
             }
         }
 
+        private bool _pttA;
+        public bool PttA
+        {
+            get => _pttA;
+            set
+            {
+                if (_pttA == value) return;
+                _pttA = value;
+                RaisePropertyChanged(nameof(PttA));
+            }
+        }
+
+        private bool _pttB;
+        public bool PttB
+        {
+            get => _pttB;
+            set
+            {
+                if (_pttB == value) return;
+                _pttB = value;
+                RaisePropertyChanged(nameof(PttB));
+            }
+        }
+
         public void AutoTune()
         {
-            if (_ant != _radio.TransmitSlice.TXAnt)
+            if (_radio.TransmitSlice == null)
             {
-                Debug.WriteLine("AutoTune skipped as configured Antenna doesn't match TX Slice TX Ant");
+                Debug.WriteLine("Autotune skipped as there is no Transmit Slice selected");
+                return;
+            }
+
+            if (_radio.TransmitSlice.TXAnt != _port_a_ant && _radio.TransmitSlice.TXAnt != _port_b_ant)
+            {
+                Debug.WriteLine("AutoTune skipped as Tuner Antenna config doesn't match TX Ant");
                 return;
             }
 
@@ -415,6 +460,21 @@ namespace Flex.Smoothlake.FlexLib
                             OneByThree = Convert.ToBoolean(temp);
                         }
                         break;
+
+                    case "dhcp":
+                        {
+                            uint temp;
+                            bool b = uint.TryParse(value, out temp);
+                            if (!b || temp > 1)
+                            {
+                                Debug.WriteLine("Tuner::StatusUpdate: Invalid value (" + kv + ")");
+                                continue;
+                            }
+
+                            Dhcp = Convert.ToBoolean(temp);
+                        }
+                        break;
+
                     case "ip":
                         {
                             IPAddress temp;
@@ -429,6 +489,7 @@ namespace Flex.Smoothlake.FlexLib
                             IP = temp;
                         }
                         break;
+
                     case "netmask":
                         {
                             IPAddress temp;
@@ -443,6 +504,7 @@ namespace Flex.Smoothlake.FlexLib
                             Netmask = temp;
                         }
                         break;
+
                     case "gateway":
                         {
                             IPAddress temp;
@@ -457,7 +519,9 @@ namespace Flex.Smoothlake.FlexLib
                             Gateway = temp;
                         }
                         break;
+
                     case "ant": Ant = value; break;
+
                     case "operate":
                         {
                             uint temp;
@@ -468,14 +532,18 @@ namespace Flex.Smoothlake.FlexLib
                                 continue;
                             }
 
-                            if (_isOperate == Convert.ToBoolean(temp))
+                            bool new_val = Convert.ToBoolean(temp);
+
+                            // if the state isn't changing, don't bother with updating the object
+                            if (_isOperate == new_val)
                                 continue;
 
-                            _isOperate = Convert.ToBoolean(temp);
+                            _isOperate = new_val;
                             RaisePropertyChanged(nameof(IsOperate));
                             UpdateState();
                         }
                         break;
+
                     case "bypass":
                         {
                             uint temp;
@@ -486,15 +554,34 @@ namespace Flex.Smoothlake.FlexLib
                                 continue;
                             }
 
-                            if (_isOperate == Convert.ToBoolean(temp))
+                            if (_isBypass == Convert.ToBoolean(temp))
                                 continue;
 
-                            _isOperate = Convert.ToBoolean(temp);
-                            RaisePropertyChanged(nameof(IsOperate));
+                            _isBypass = Convert.ToBoolean(temp);
+                            RaisePropertyChanged(nameof(IsBypass));
                             UpdateState();
                         }
                         break;
-                    case "relayC1":
+
+                    case "tuning":
+                        {
+                            uint temp;
+                            bool b = uint.TryParse(value, out temp);
+                            if (!b || temp > 1)
+                            {
+                                Debug.WriteLine("Tuner::StatusUpdate: Invalid value (" + kv + ")");
+                                continue;
+                            }
+
+                            if (_isTuning == Convert.ToBoolean(temp))
+                                continue;
+
+                            _isTuning = Convert.ToBoolean(temp);
+                            RaisePropertyChanged(nameof(IsTuning));
+                        }
+                        break;
+
+                    case "relayc1":
                         {
                             int temp;
                             bool b = int.TryParse(value, out temp);
@@ -511,7 +598,8 @@ namespace Flex.Smoothlake.FlexLib
                             RaisePropertyChanged(nameof(RelayC1));
                         }
                         break;
-                    case "relayC2":
+
+                    case "relayc2":
                         {
                             int temp;
                             bool b = int.TryParse(value, out temp);
@@ -528,7 +616,8 @@ namespace Flex.Smoothlake.FlexLib
                             RaisePropertyChanged(nameof(RelayC2));
                         }
                         break;
-                    case "relayL":
+
+                    case "relayl":
                         {
                             int temp;
                             bool b = int.TryParse(value, out temp);
@@ -543,6 +632,34 @@ namespace Flex.Smoothlake.FlexLib
 
                             _relayL = temp;
                             RaisePropertyChanged(nameof(RelayL));
+                        }
+                        break;
+
+                    case "ptta": // note: tolower call above
+                        {
+                            uint temp;
+                            bool b = uint.TryParse(value, out temp);
+                            if (!b || temp > 1)
+                            {
+                                Debug.WriteLine("Tuner::StatusUpdate: Invalid value (" + kv + ")");
+                                continue;
+                            }
+
+                            PttA = Convert.ToBoolean(temp);
+                        }
+                        break;
+
+                    case "pttb": // note: tolower call above
+                        {
+                            uint temp;
+                            bool b = uint.TryParse(value, out temp);
+                            if (!b || temp > 1)
+                            {
+                                Debug.WriteLine("Tuner::StatusUpdate: Invalid value (" + kv + ")");
+                                continue;
+                            }
+
+                            PttB = Convert.ToBoolean(temp);
                         }
                         break;
                     default:

@@ -1,31 +1,28 @@
 ﻿// ****************************************************************************
-///*!	\file IUsbCatCable.cs
-// *	\brief Interface for a single CAT USB Cable
+///*!	\file IUsbPassthroughCable.cs
+// *	\brief Interface for a single Passthrough USB Cable
 // *
-// *	\copyright	Copyright 2012-2017 FlexRadio Systems.  All Rights Reserved.
+// *	\copyright	Copyright 2012-2024 FlexRadio Systems.  All Rights Reserved.
 // *				Unauthorized use, duplication or distribution of this software is
 // *				strictly prohibited by law.
 // *
-// *	\date 2016-08-10
-// *	\author Eric Wachsmann KE5DTO
+// *	\date 2024-10-14
+// *	\author Maurice Smulders KF0GEO
 // */
 // ****************************************************************************
 
 using System;
 
+
 namespace Flex.Smoothlake.FlexLib
 {
-    public interface IUsbCatCable : IUsbCable
+    public interface IUsbPassthroughCable : IUsbCable
     {
-        UsbCableFreqSource Source { get; set; }
-        string SelectedRxAnt { get; set; }
-        string SelectedTxAnt { get; set; }
-        string SelectedSlice { get; set; }
-        bool AutoReport { get; set; }
         SerialDataBits DataBits { get; set; }
         SerialSpeed Speed { get; set; }
         SerialParity Parity { get; set; }
         SerialFlowControl FlowControl { get; set; }
         SerialStopBits StopBits { get; set; }
+
     }
 }
